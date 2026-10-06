@@ -58,7 +58,7 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.3.0</version>
                 <configuration>
-                    <mainClass>pl.warsaw.wtp.MainApp</mainClass>
+                    <mainClass>pl.j.reinmar.mapwaw.wtp.MainApp</mainClass>
                 </configuration>
             </plugin>
         </plugins>

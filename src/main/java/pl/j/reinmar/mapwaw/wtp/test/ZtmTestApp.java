@@ -1,4 +1,4 @@
-package pl.j.reinmar.mapwaw.wtp;
+package pl.j.reinmar.mapwaw.wtp.test;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
