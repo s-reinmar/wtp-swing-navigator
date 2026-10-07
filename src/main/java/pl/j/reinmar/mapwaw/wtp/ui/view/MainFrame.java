@@ -7,8 +7,9 @@ import javax.swing.*;
 import java.awt.*;
 
 /**
- * Główne okno aplikacji Swing/AWT reprezentujące widok nawigacyjny WTP Warszawa.
- * Rozszerza klasę JFrame i definiuje bazowe parametry okna (tytuł, wymiary, centrowanie).
+ * Główne okno aplikacji Swing/AWT reprezentujące widok nawigacyjny WTP Warszawa[cite: 3].
+ * Wykorzystuje zarządcę układu BorderLayout do podziału widoku na panel boczny (WEST)
+ * oraz centralny panel mapy OpenStreetMap (CENTER)[cite: 2, 3].
  */
 public class MainFrame extends JFrame {
 
@@ -18,34 +19,117 @@ public class MainFrame extends JFrame {
     private static final int DEFAULT_WIDTH = 1280;
     private static final int DEFAULT_HEIGHT = 800;
 
+    private JPanel sidebarPanel;
+    private JPanel mapPanel;
+    private JPanel statusBarPanel;
+    private JLabel statusLabel;
+
     /**
-     * Konstruktor tworzący główne okno aplikacji z domyślnym rozmiarem i konfiguracją.
+     * Konstruktor tworzący główne okno aplikacji z ukierunkowanym układem BorderLayout[cite: 2, 3].
      */
     public MainFrame() {
         super(APP_TITLE);
         initFrame();
+        setupBorderLayoutContainers();
     }
 
     /**
-     * Inicjalizuje podstawowe właściwości komponentu JFrame.
+     * Inicjalizuje podstawowe właściwości okna JFrame.
      */
     private void initFrame() {
         logger.info("Inicjalizacja głównego okna aplikacji MainFrame (rozmiar: {}x{})...", DEFAULT_WIDTH, DEFAULT_HEIGHT);
 
-        // 1. Ustawienie domyślnej operacji zamykania aplikacji
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-
-        // 2. Ustawienie preferowanego rozmiaru okna
         setSize(DEFAULT_WIDTH, DEFAULT_HEIGHT);
         setMinimumSize(new Dimension(1024, 600));
-
-        // 3. Wycentrowanie okna na ekranie
         setLocationRelativeTo(null);
 
-        // 4. Ustawienie bazowego zarządcy układu
-        setLayout(new BorderLayout());
+        // Ustawienie głównego zarządcy układu na BorderLayout[cite: 2, 3]
+        setLayout(new BorderLayout(4, 4));
+    }
 
-        logger.info("Główne okno MainFrame zostało pomyślnie skonsolidowane.");
+    /**
+     * KROK 50: Skonfigurowanie podziału okna za pomocą układu BorderLayout[cite: 2].
+     */
+    private void setupBorderLayoutContainers() {
+        logger.info("Konfigurowanie stref BorderLayout: WEST (panel sterowania), CENTER (mapa), SOUTH (pasek stanu)...");
+
+        // 1. PANEL BOCZNY (STEROWANIE) - Zmieszczony w sekcji WEST[cite: 2, 3]
+        sidebarPanel = new JPanel();
+        sidebarPanel.setLayout(new BoxLayout(sidebarPanel, BoxLayout.Y_AXIS));
+        sidebarPanel.setPreferredSize(new Dimension(340, 0));
+        sidebarPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 0, 1, Color.LIGHT_GRAY),
+                BorderFactory.createEmptyBorder(8, 8, 8, 8)
+        ));
+
+        // Placeholder dla przyszłego panelu wyszukiwania / tablicy odjazdów (SidebarPanel / DepartureBoardPanel)[cite: 2, 3]
+        JLabel sidebarPlaceholder = new JLabel("<html><b>Panel Sterowania WTP</b><br/>(Wyszukiwarka i Tablica Odjazdów)</html>");
+        sidebarPanel.add(sidebarPlaceholder);
+
+        add(sidebarPanel, BorderLayout.WEST);
+
+        // 2. PANEL CENTRALNY (MAPA) - Zmieszczony w sekcji CENTER[cite: 2, 3]
+        mapPanel = new JPanel(new BorderLayout());
+        mapPanel.setBackground(new Color(235, 235, 235));
+
+        // Placeholder pod docelowy komponent MapPanel (JXMapViewer2)[cite: 2, 3]
+        JLabel mapPlaceholder = new JLabel("Komponent Mapy OpenStreetMap (JXMapViewer2)", SwingConstants.CENTER);
+        mapPlaceholder.setFont(new Font("SansSerif", Font.BOLD, 14));
+        mapPanel.add(mapPlaceholder, BorderLayout.CENTER);
+
+        add(mapPanel, BorderLayout.CENTER);
+
+        // 3. PASZEK STATUSU (DOLNY) - Zmieszczony w sekcji SOUTH[cite: 2, 3]
+        statusBarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
+        statusBarPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY));
+
+        statusLabel = new JLabel("Gotowy. Załadowano system interfejsu WTP Swing Navigator.");
+        statusLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        statusBarPanel.add(statusLabel);
+
+        add(statusBarPanel, BorderLayout.SOUTH);
+
+        logger.info("Struktura kontenerów BorderLayout została skonfigurowana.");
+    }
+
+    /**
+     * Podmienia centralny panel mapy na właściwą instancję MapPanel.
+     *
+     * @param newMapPanel dedykowany panel z mapą JXMapViewer2[cite: 2, 3]
+     */
+    public void setMapPanel(JPanel newMapPanel) {
+        if (this.mapPanel != null) {
+            remove(this.mapPanel);
+        }
+        this.mapPanel = newMapPanel;
+        add(this.mapPanel, BorderLayout.CENTER);
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Podmienia boczny panel sterowania na właściwy panel z wyszukiwarką/odjazdami.
+     *
+     * @param newSidebarPanel dedykowany panel boczny sterowania[cite: 2, 3]
+     */
+    public void setSidebarPanel(JPanel newSidebarPanel) {
+        if (this.sidebarPanel != null) {
+            remove(this.sidebarPanel);
+        }
+        this.sidebarPanel = newSidebarPanel;
+        add(this.sidebarPanel, BorderLayout.WEST);
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Aktualizuje tekst wyświetlany na dolnym pasku stanu.
+     */
+    public void setStatusText(String text) {
+        if (statusLabel != null) {
+            SwingUtilities.invokeLater(() -> statusLabel.setText(text));
+        }
     }
 
     /**
