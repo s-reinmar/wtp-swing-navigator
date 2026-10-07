@@ -12,21 +12,22 @@ import java.util.stream.Collectors;
 
 /**
  * Pamięciowy magazyn danych (Repository) dla przystanków, linii oraz rozkładowych odjazdów.
- * Wykorzystuje struktury HashMap / ConcurrentHashMap dla szybkiego indeksowania i wyszukiwania po ID, kodzie i nazwie.
+ * Zawiera zaawansowane indeksy do wiązania odjazdów z liniami i przystankami.
  */
 public class ScheduleRepository {
 
     // Indeksy w pamięci RAM
     private final Map<String, Stop> stopsById = new ConcurrentHashMap<>();
-    private final Map<String, Stop> stopsByCode = new ConcurrentHashMap<>();            // Indeksowanie po kodzie słupka (np. "01")
-    private final Map<String, List<Stop>> stopsByName = new ConcurrentHashMap<>();    // Indeksowanie po nazwie zespołu (np. "Centrum")
+    private final Map<String, Stop> stopsByCode = new ConcurrentHashMap<>();
+    private final Map<String, List<Stop>> stopsByName = new ConcurrentHashMap<>();
 
     private final Map<String, Line> linesByNumber = new ConcurrentHashMap<>();
-    private final Map<String, List<Departure>> departuresByStopId = new ConcurrentHashMap<>();
 
-    /**
-     * Dodaje przystanek do magazynu i automatycznie buduje indeksy wyszukiwania.
-     */
+    // Indeksy odjazdów
+    private final Map<String, List<Departure>> departuresByStopId = new ConcurrentHashMap<>();
+    private final Map<String, List<Departure>> departuresByLineNumber = new ConcurrentHashMap<>();     // Indeks po linii
+    private final Map<String, List<Departure>> departuresByLineAndStop = new ConcurrentHashMap<>();   // Indeks złożony (linia + przystanek)
+
     public void addStop(Stop stop) {
         if (stop != null) {
             if (stop.getId() != null) {
@@ -42,65 +43,56 @@ public class ScheduleRepository {
         }
     }
 
-    /**
-     * Wyszukuje przystanek po unikalnym identyfikatorze[cite: 13].
-     */
     public Stop findStopById(String id) {
         return stopsById.get(id);
     }
 
-    /**
-     * Wyszukuje przystanek bezpośrednio po kodzie słupka w strukturze HashMap.
-     */
     public Stop findStopByCode(String code) {
         return stopsByCode.get(code);
     }
 
-    /**
-     * Wyszukuje przystanki pasujące nazwą zespołu przystankowego (np. "Centrum").
-     * Wykorzystuje szybki lookup po mapie lub dopasowanie podciągów.
-     */
     public List<Stop> findStopsByName(String name) {
         if (name == null || name.isBlank()) {
             return List.of();
         }
         String search = name.toLowerCase().trim();
-
-        // Sprawdź dokładne trafienie w indeksie nazw
         List<Stop> exactMatches = stopsByName.get(search);
         if (exactMatches != null && !exactMatches.isEmpty()) {
             return new ArrayList<>(exactMatches);
         }
 
-        // Wyszukiwanie częściowe (zawierające frazę)
         return stopsById.values().stream()
                 .filter(s -> s.getName() != null && s.getName().toLowerCase().contains(search))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Dodaje linię transportową do magazynu.
-     */
     public void addLine(Line line) {
         if (line != null && line.getLineNumber() != null) {
             linesByNumber.put(line.getLineNumber(), line);
         }
     }
 
-    /**
-     * Wyszukuje linię po numerze (np. "507", "17")
-     */
     public Line findLineByNumber(String lineNumber) {
         return linesByNumber.get(lineNumber);
     }
 
     /**
-     * Rejestruje odjazd rozkładowy w magazynie.
+     * Rejestruje odjazd rozkładowy i automatycznie buduje indeksy powiązań z liniami i przystankami.
      */
     public void addDeparture(Departure departure) {
-        if (departure != null && departure.getStop() != null) {
+        if (departure != null && departure.getStop() != null && departure.getLine() != null) {
             String stopId = departure.getStop().getId();
+            String lineNumber = departure.getLine().getLineNumber();
+
+            // 1. Indeks po samym przystanku
             departuresByStopId.computeIfAbsent(stopId, k -> new ArrayList<>()).add(departure);
+
+            // 2. Indeks po numerze linii
+            departuresByLineNumber.computeIfAbsent(lineNumber, k -> new ArrayList<>()).add(departure);
+
+            // 3. Indeks złożony: linia + przystanek
+            String compositeKey = lineNumber + "_" + stopId;
+            departuresByLineAndStop.computeIfAbsent(compositeKey, k -> new ArrayList<>()).add(departure);
         }
     }
 
@@ -112,15 +104,24 @@ public class ScheduleRepository {
     }
 
     /**
-     * Zwraca całkowitą liczbę załadowanych przystanków.
+     * Zwraca listę odjazdów dla wskazanej linii transportowej.
      */
+    public List<Departure> getDeparturesForLine(String lineNumber) {
+        return departuresByLineNumber.getOrDefault(lineNumber, List.of());
+    }
+
+    /**
+     * Zwraca listę odjazdów dla konkretnej linii z wybranego przystanku.
+     */
+    public List<Departure> getDeparturesForLineAndStop(String lineNumber, String stopId) {
+        String compositeKey = lineNumber + "_" + stopId;
+        return departuresByLineAndStop.getOrDefault(compositeKey, List.of());
+    }
+
     public int getStopsCount() {
         return stopsById.size();
     }
 
-    /**
-     * Zwraca całkowitą liczbę załadowanych linii.
-     */
     public int getLinesCount() {
         return linesByNumber.size();
     }
