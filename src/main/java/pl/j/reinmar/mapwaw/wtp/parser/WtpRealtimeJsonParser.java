@@ -63,7 +63,8 @@ public class WtpRealtimeJsonParser {
             if (resultNode.isArray()) {
                 for (JsonNode itemNode : resultNode) {
                     LiveVehiclePosition position = parseVehicleNode(itemNode);
-                    if (position != null) {
+                    // KROK 40: Filtracja uszkodzonych i nieaktualnych ramek GPS
+                    if (position != null && GpsFrameValidator.isValidFrame(position)) {
                         positions.add(position);
                     }
                 }
