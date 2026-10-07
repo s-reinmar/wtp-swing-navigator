@@ -6,8 +6,6 @@ import java.util.Collection;
 
 /**
  * Klasa narzędziowa zawierająca algorytmy geodezyjne i geolokalizacyjne.
- * Główną funkcjonalnością jest obliczanie odległości między współrzędnymi GPS
- * za pomocą wzoru Haversine'a.
  */
 public class GeoUtils {
 
@@ -15,14 +13,7 @@ public class GeoUtils {
     private static final double EARTH_RADIUS_METERS = 6371000.0;
 
     /**
-     * Oblicza odległość w metrach między dwoma punktami geograficznymi
-     * na podstawie ich współrzędnych (lat, lon) przy użyciu wzoru Haversine'a.
-     *
-     * @param lat1 szerokość geograficzna punktu 1 (w stopniach)
-     * @param lon1 długość geograficzna punktu 1 (w stopniach)
-     * @param lat2 szerokość geograficzna punktu 2 (w stopniach)
-     * @param lon2 długość geograficzna punktu 2 (w stopniach)
-     * @return odległość w metrach
+     * Oblicza odległość w metrach między dwoma punktami geograficznymi wzorem Haversine'a.
      */
     public static double calculateDistanceMeters(double lat1, double lon1, double lat2, double lon2) {
         double dLat = Math.toRadians(lat2 - lat1);
@@ -37,12 +28,32 @@ public class GeoUtils {
     }
 
     /**
-     * Wyszukuje najbliższy przystanek względem podanych współrzędnych geograficznych.
+     * Oblicza azymut / kąt kierunku ruchu (bearing) w stopniach (0° - 360°).
+     * Kąt wyliczany jest od północy zgodnie z ruchem wskazówek zegara.
      *
-     * @param latitude  szerokość geograficzna punktu odniesienia
-     * @param longitude długość geograficzna punktu odniesienia
-     * @param stops     kolekcja przystanków do przeszukania
-     * @return najbliższy obiekt Stop lub null, jeśli kolekcja jest pusta
+     * @param lat1 szerokość geograficzna punktu początkowego
+     * @param lon1 długość geograficzna punktu początkowego
+     * @param lat2 szerokość geograficzna punktu docelowego
+     * @param lon2 długość geograficzna punktu docelowego
+     * @return kąt kierunku jazdy w stopniach w przedziale [0.0, 360.0)
+     */
+    public static float calculateBearing(double lat1, double lon1, double lat2, double lon2) {
+        double phi1 = Math.toRadians(lat1);
+        double phi2 = Math.toRadians(lat2);
+        double deltaLambda = Math.toRadians(lon2 - lon1);
+
+        double y = Math.sin(deltaLambda) * Math.cos(phi2);
+        double x = Math.cos(phi1) * Math.sin(phi2) -
+                Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+
+        double theta = Math.atan2(y, x);
+        double bearing = (Math.toDegrees(theta) + 360.0) % 360.0;
+
+        return (float) bearing;
+    }
+
+    /**
+     * Wyszukuje najbliższy przystanek względem podanych współrzędnych.
      */
     public static Stop findNearestStop(double latitude, double longitude, Collection<Stop> stops) {
         if (stops == null || stops.isEmpty()) {
