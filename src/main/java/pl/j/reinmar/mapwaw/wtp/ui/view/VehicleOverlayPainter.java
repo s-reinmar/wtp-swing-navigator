@@ -20,7 +20,8 @@ import java.util.Collection;
 
 /**
  * Nakładka na mapę (Painter) odpowiedzialna za renderowanie i rysowanie
- * aktualnych pozycji pojazdów na mapie z obracaniem ikon zgodnie z kątem kierunku jazdy (bearing).
+ * aktualnych pozycji pojazdów na mapie z obracaniem ikon oraz dodawaniem
+ * etykiet z numerem linii nad ikonką pojazdu.
  */
 public class VehicleOverlayPainter implements Painter<JXMapViewer> {
 
@@ -84,6 +85,7 @@ public class VehicleOverlayPainter implements Painter<JXMapViewer> {
         g2d.translate(-viewportBounds.x, -viewportBounds.y);
 
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 
         for (LiveVehiclePosition pos : positions) {
@@ -98,39 +100,81 @@ public class VehicleOverlayPainter implements Painter<JXMapViewer> {
             int x = (int) point.getX();
             int y = (int) point.getY();
 
-            // KROK 59: Rysowanie ikony z uwzględnieniem kąta obrotu (bearing)
+            // 1. Rysowanie obróconej ikony pojazdu
             drawRotatedVehicleIcon(g2d, x, y, pos);
+
+            // KROK 60: Rysowanie etykiety z numerem linii nad ikonką pojazdu
+            drawLineLabelAboveVehicle(g2d, x, y, pos);
         }
 
         g2d.dispose();
     }
 
     /**
-     * KROK 59: Rysuje obróconą ikonę pojazdu w punkcie (x, y) na podstawie wyliczonego azymutu (bearing).
+     * Rysuje obróconą ikonę pojazdu w punkcie (x, y) na podstawie wyliczonego azymutu (bearing).
      */
     private void drawRotatedVehicleIcon(Graphics2D g2d, int x, int y, LiveVehiclePosition vehicle) {
         BufferedImage icon = resolveVehicleIcon(vehicle);
-        float bearing = vehicle.getBearing(); // Wyliczony kąt kierunku jazdy w stopniach (0 - 360)
+        float bearing = vehicle.getBearing();
 
         if (icon != null) {
             int iconWidth = icon.getWidth();
             int iconHeight = icon.getHeight();
 
-            // Zapamiętanie obecnego stanu transformacji graficznej
             AffineTransform oldTransform = g2d.getTransform();
 
-            // Wykonanie obrotu wokół środka punktu stasowania ikony pojazdu
             g2d.rotate(Math.toRadians(bearing), x, y);
 
             int drawX = x - (iconWidth / 2);
             int drawY = y - (iconHeight / 2);
             g2d.drawImage(icon, drawX, drawY, null);
 
-            // Przywrócenie transformacji sprzed obrotu
             g2d.setTransform(oldTransform);
         } else {
             drawFallbackMarker(g2d, x, y, isTram(vehicle));
         }
+    }
+
+    /**
+     * KROK 60: Rysuje czytelną etykietę z numerem linii w ramce z zaokrąglonymi rogami tuż nad ikoną pojazdu.
+     */
+    private void drawLineLabelAboveVehicle(Graphics2D g2d, int x, int y, LiveVehiclePosition vehicle) {
+        String lineNumber = vehicle.getLineNumber();
+        if (lineNumber == null || lineNumber.isBlank()) {
+            return;
+        }
+
+        g2d.setFont(new Font("SansSerif", Font.BOLD, 11));
+        FontMetrics fm = g2d.getFontMetrics();
+
+        int textWidth = fm.stringWidth(lineNumber);
+        int textHeight = fm.getAscent();
+
+        int paddingX = 5;
+        int paddingY = 2;
+
+        int boxWidth = textWidth + (paddingX * 2);
+        int boxHeight = textHeight + (paddingY * 2);
+
+        // Pozycjonowanie etykiety nad ikonką pojazdu
+        int boxX = x - (boxWidth / 2);
+        int boxY = y - 22;
+
+        // Tło etykiety
+        g2d.setColor(new Color(255, 255, 255, 230));
+        g2d.fillRoundRect(boxX, boxY, boxWidth, boxHeight, 6, 6);
+
+        // Obramowanie etykiety
+        Color borderCol = isTram(vehicle) ? new Color(204, 0, 0) : new Color(0, 102, 204);
+        g2d.setColor(borderCol);
+        g2d.setStroke(new BasicStroke(1.2f));
+        g2d.drawRoundRect(boxX, boxY, boxWidth, boxHeight, 6, 6);
+
+        // Tekst numeru linii
+        int textX = boxX + paddingX;
+        int textY = boxY + textHeight + (paddingY / 2) - 1;
+        g2d.setColor(Color.BLACK);
+        g2d.drawString(lineNumber, textX, textY);
     }
 
     private BufferedImage resolveVehicleIcon(LiveVehiclePosition vehicle) {
