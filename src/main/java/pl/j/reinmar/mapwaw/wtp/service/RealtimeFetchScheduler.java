@@ -12,10 +12,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
- * Usługa tła wykorzystująca ScheduledExecutorService do cyklicznego odpytywania
- * interfejsu REST API ZTM Warszawa o aktualne pozycje GPS autobusów i tramwajów.
+ * Usługa cykliczna odpytująca API UM w tle z reakcją na błędy braku połączenia internetowego.
  */
 public class RealtimeFetchScheduler {
 
@@ -29,7 +29,10 @@ public class RealtimeFetchScheduler {
 
     private ScheduledExecutorService scheduler;
     private ScheduledFuture<?> scheduledTask;
+
     private Runnable uiRefreshCallback;
+    private Consumer<Boolean> connectionStatusCallback; // Status sieci (true = OK, false = Błąd)
+    private boolean lastConnectionState = true;
 
     public RealtimeFetchScheduler(WtpRealtimeApiClient apiClient,
                                   RealtimeVehicleCache vehicleCache,
@@ -40,28 +43,23 @@ public class RealtimeFetchScheduler {
         this.delayCalculator = delayCalculator;
     }
 
-    /**
-     * Rejestruje funkcję zwrotną (callback) wywoływaną na wątku Swing EDT po każdej aktualizacji danych.
-     */
     public void setUiRefreshCallback(Runnable uiRefreshCallback) {
         this.uiRefreshCallback = uiRefreshCallback;
     }
 
     /**
-     * Uruchamia cykliczne odpytywanie API w tle z domyślnym interwałem 10 sekund.
+     * Rejestruje nasłuchiwanie zmiany stanu połączenia z siecią (do paska statusu UI).
      */
+    public void setConnectionStatusCallback(Consumer<Boolean> connectionStatusCallback) {
+        this.connectionStatusCallback = connectionStatusCallback;
+    }
+
     public synchronized void start() {
         start(DEFAULT_INTERVAL_SECONDS);
     }
 
-    /**
-     * Uruchamia cykliczne odpytywanie API w tle ze wskazanym interwałem w sekundach (10–15 s).
-     *
-     * @param intervalSeconds interwał odświeżania w sekundach
-     */
     public synchronized void start(int intervalSeconds) {
         if (isRunning()) {
-            logger.warn("Usługa RealtimeFetchScheduler jest już uruchomiona.");
             return;
         }
 
@@ -71,7 +69,7 @@ public class RealtimeFetchScheduler {
             return thread;
         });
 
-        logger.info("Uruchamianie pętli pobierania GPS co {} sekund w tle...", intervalSeconds);
+        logger.info("Uruchamianie pętli pobierania GPS co {} s z obsługą braków połączenia...", intervalSeconds);
 
         scheduledTask = scheduler.scheduleAtFixedRate(
                 this::fetchAndProcessRealtimeData,
@@ -81,23 +79,12 @@ public class RealtimeFetchScheduler {
         );
     }
 
-    /**
-     * Zatrzymuje pętlę odpytywania API w tle.
-     */
     public synchronized void stop() {
         if (scheduledTask != null) {
             scheduledTask.cancel(true);
         }
         if (scheduler != null && !scheduler.isShutdown()) {
-            scheduler.shutdown();
-            try {
-                if (!scheduler.awaitTermination(2, TimeUnit.SECONDS)) {
-                    scheduler.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                scheduler.shutdownNow();
-                Thread.currentThread().interrupt();
-            }
+            scheduler.shutdownNow();
         }
         logger.info("Usługa RealtimeFetchScheduler została zatrzymana.");
     }
@@ -106,30 +93,29 @@ public class RealtimeFetchScheduler {
         return scheduledTask != null && !scheduledTask.isCancelled();
     }
 
-    /**
-     * Główna metoda wykonywana cyklicznie w wątku tła.
-     */
     private void fetchAndProcessRealtimeData() {
         try {
-            logger.debug("Rozpoczęcie cyklu pobierania danych GPS z API ZTM...");
-
-            // 1. Pobranie surowego JSON dla autobusów (type = 1) i tramwajów (type = 2)
             String busJson = apiClient.fetchBusPositions();
             String tramJson = apiClient.fetchTramPositions();
 
-            // 2. Parsowanie i walidacja ramek GPS
+            // KROK 45: Sprawdzenie, czy zapytanie się powiodło (pusty wynik oznacz błąd sieci/timeout)
+            if (busJson.isBlank() && tramJson.isBlank()) {
+                notifyConnectionState(false);
+                logger.warn("Brak połączenia lub serwer UM nie odpowiada. Pomięcie cyklu aktualizacji.");
+                return;
+            }
+
+            // Połączenie udane
+            notifyConnectionState(true);
+
             List<LiveVehiclePosition> busPositions = jsonParser.parseVehiclePositions(busJson);
             List<LiveVehiclePosition> tramPositions = jsonParser.parseVehiclePositions(tramJson);
 
-            int updatedCount = 0;
-
-            // 3. Obliczenie opóźnień i aktualizacja ConcurrentHashMap w cache
             for (LiveVehiclePosition pos : busPositions) {
                 if (delayCalculator != null) {
                     delayCalculator.calculateAndUpdateDelay(pos);
                 }
                 vehicleCache.updatePosition(pos);
-                updatedCount++;
             }
 
             for (LiveVehiclePosition pos : tramPositions) {
@@ -137,19 +123,24 @@ public class RealtimeFetchScheduler {
                     delayCalculator.calculateAndUpdateDelay(pos);
                 }
                 vehicleCache.updatePosition(pos);
-                updatedCount++;
             }
 
-            logger.info("Zakończono cykl GPS. Zaktualizowano pojazdów w cache: {} (Autobusy: {}, Tramwaje: {})",
-                    updatedCount, busPositions.size(), tramPositions.size());
-
-            // 4. Bezpieczne zlecenie przerysowania interfejsu na wątku Swing EDT
             if (uiRefreshCallback != null) {
                 SwingUtilities.invokeLater(uiRefreshCallback);
             }
 
         } catch (Exception e) {
-            logger.error("Błąd podczas cyklicznego pobierania danych GPS w tle: {}", e.getMessage(), e);
+            notifyConnectionState(false);
+            logger.error("Awarjna obsługa cyklu GPS: {}", e.getMessage());
+        }
+    }
+
+    private void notifyConnectionState(boolean isConnected) {
+        if (this.lastConnectionState != isConnected) {
+            this.lastConnectionState = isConnected;
+            if (connectionStatusCallback != null) {
+                SwingUtilities.invokeLater(() -> connectionStatusCallback.accept(isConnected));
+            }
         }
     }
 }

@@ -5,16 +5,19 @@ import org.slf4j.LoggerFactory;
 import pl.j.reinmar.mapwaw.wtp.config.AppConfig;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Klient HTTP oparty na natywnym java.net.http.HttpClient, odpowiedzialny za
- * komunikację z interfejsem REST API UM Warszawa (ZTM) w celu pobierania danych GPS.
+ * Zoptymalizowany klient HTTP odporny na błędy braku połączenia internetowego
+ * oraz przeciążenia/przerwy w działaniu serwerów API UM Warszawa.
  */
 public class WtpRealtimeApiClient {
 
@@ -24,43 +27,39 @@ public class WtpRealtimeApiClient {
     private final String apiEndpoint;
     private final String resourceId;
 
-    /**
-     * Domyślny konstruktor inicjalizujący natywny HttpClient z konfiguracją limitów czasowych.
-     */
     public WtpRealtimeApiClient() {
         this.apiEndpoint = AppConfig.getApiEndpoint();
         this.resourceId = AppConfig.getResourceId();
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
+                .connectTimeout(Duration.ofSeconds(6)) // Krótki timeout połączenia
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
     }
 
-    /**
-     * Alternatywny konstruktor pozwalający na przekazanie własnej instancji HttpClient (np. do testów).
-     */
     public WtpRealtimeApiClient(HttpClient httpClient, String apiEndpoint, String resourceId) {
         this.httpClient = httpClient;
         this.apiEndpoint = apiEndpoint;
         this.resourceId = resourceId;
     }
 
-    /**
-     * Pobiera surową odpowiedź JSON z pozycjami pojazdów wskazanego typu (synchronicznie).
-     *
-     * @param type 1 dla autobusów, 2 dla tramwajów
-     * @return treść odpowiedzi JSON lub pusty ciąg w przypadku błędu
-     */
-    public String fetchRawVehicleData(int type) {
-        return fetchRawVehicleData(type, null);
+    public String fetchBusPositions() {
+        return fetchBusPositions(null);
+    }
+
+    public String fetchBusPositions(String lineNumber) {
+        return fetchRawVehicleData(1, lineNumber);
+    }
+
+    public String fetchTramPositions() {
+        return fetchTramPositions(null);
+    }
+
+    public String fetchTramPositions(String lineNumber) {
+        return fetchRawVehicleData(2, lineNumber);
     }
 
     /**
-     * Pobiera surową odpowiedź JSON z opcjonalnym filtrowaniem po numerze linii.
-     *
-     * @param type       1 dla autobusów, 2 dla tramwajów
-     * @param lineNumber opcjonalny numer linii (np. "507"), może być null
-     * @return treść odpowiedzi JSON
+     * Główna metoda wykonująca zapytanie HTTP z kompleksową obsługą błędów sieci.
      */
     public String fetchRawVehicleData(int type, String lineNumber) {
         String url = buildApiUrl(type, lineNumber);
@@ -69,7 +68,7 @@ public class WtpRealtimeApiClient {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(12))
+                    .timeout(Duration.ofSeconds(8)) // Max czas oczekiwania na odpowiedź
                     .header("Accept", "application/json")
                     .GET()
                     .build();
@@ -77,53 +76,33 @@ public class WtpRealtimeApiClient {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200) {
-                return response.body();
+                String body = response.body();
+                // Sprawdzenie, czy serwer UM nie zwrócił błędu w treści JSON
+                if (body != null && body.contains("\"result\":\"false\"")) {
+                    logger.warn("Serwer API UM zwrócił komunikat o błędnym zapytaniu lub braku klucza API.");
+                    return "";
+                }
+                return body;
             } else {
-                logger.warn("Serwer API ZTM zwrócił niepoprawny kod statusu HTTP: {}", response.statusCode());
+                logger.warn("Serwer API UM odpowiedział kodem błędu HTTP: {}", response.statusCode());
             }
+
+        } catch (UnknownHostException | ConnectException e) {
+            // KROK 45: Brak połączenia z Internetem lub problem z DNS
+            logger.error("Brak połączenia z Internetem lub serwerem UM Warszawa: {}", e.getMessage());
+        } catch (HttpTimeoutException e) {
+            // KROK 45: Przekroczono limit czasu odpowiedzi serwera ZTM
+            logger.warn("Przekroczono czas oczekiwania na odpowiedź serwera API UM (Timeout 8s).");
         } catch (IOException e) {
-            logger.error("Błąd bazy I/O podczas połączenia z API ZTM: {}", e.getMessage());
+            logger.error("Błąd wejścia/wyjścia podczas połączenia z API ZTM: {}", e.getMessage());
         } catch (InterruptedException e) {
-            logger.error("Przerwano zapytanie HTTP do API ZTM: {}", e.getMessage());
+            logger.warn("Przerwano połączenie HTTP z API ZTM: {}", e.getMessage());
             Thread.currentThread().interrupt();
         }
 
-        return "";
+        return ""; // Zwraca pusty ciąg, informując serwis nadrzędny o niepowodzeniu
     }
 
-    /**
-     * Pobiera surową odpowiedź JSON w sposób asynchroniczny (non-blocking).
-     *
-     * @param type 1 dla autobusów, 2 dla tramwajów
-     * @return CompletableFuture z treścią odpowiedzi JSON
-     */
-    public CompletableFuture<String> fetchRawVehicleDataAsync(int type) {
-        String url = buildApiUrl(type, null);
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(12))
-                .header("Accept", "application/json")
-                .GET()
-                .build();
-
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenApply(response -> {
-                    if (response.statusCode() == 200) {
-                        return response.body();
-                    }
-                    logger.warn("Asynchroniczne zapytanie zwróciło status HTTP: {}", response.statusCode());
-                    return "";
-                })
-                .exceptionally(ex -> {
-                    logger.error("Błąd podczas asynchronicznego zapytania HTTP: {}", ex.getMessage());
-                    return "";
-                });
-    }
-
-    /**
-     * Buduje pełny adres URL zapytania na podstawie parametrów konfiguracyjnych i klucza API.
-     */
     private String buildApiUrl(int type, String lineNumber) {
         String apiKey = AppConfig.getApiKey();
         StringBuilder urlBuilder = new StringBuilder(apiEndpoint);
@@ -136,63 +115,5 @@ public class WtpRealtimeApiClient {
         }
 
         return urlBuilder.toString();
-    }
-
-    /**
-     * Pobiera pozycje GPS wszystkich aktywnych autobusów (type = 1) w czasie rzeczywistym (synchronicznie).
-     *
-     * @return surowy ciąg znaków w formacie JSON z odpowiedzą API ZTM
-     */
-    public String fetchBusPositions() {
-        return fetchBusPositions(null);
-    }
-
-    /**
-     * Pobiera pozycje GPS autobusów dla wybranej linii transportowej (type = 1).
-     *
-     * @param lineNumber numer linii autobusowej (np. "507", "111")
-     * @return surowy ciąg znaków w formacie JSON z odpowiedzą API ZTM
-     */
-    public String fetchBusPositions(String lineNumber) {
-        // type = 1 oznacza pojazdy typu BUS (autobusy)
-        return fetchRawVehicleData(1, lineNumber);
-    }
-
-    /**
-     * Asynchronicznie pobiera pozycje GPS wszystkich aktywnych autobusów (type = 1).
-     *
-     * @return CompletableFuture zawierający odpowiedź JSON
-     */
-    public CompletableFuture<String> fetchBusPositionsAsync() {
-        return fetchRawVehicleDataAsync(1);
-    }
-
-    /**
-     * Pobiera pozycje GPS wszystkich aktywnych tramwajów (type = 2) w czasie rzeczywistym (synchronicznie).
-     *
-     * @return surowy ciąg znaków w formacie JSON z odpowiedzią API ZTM
-     */
-    public String fetchTramPositions() {
-        return fetchTramPositions(null);
-    }
-
-    /**
-     * Pobiera pozycje GPS tramwajów dla wybranej linii transportowej (type = 2).
-     *
-     * @param lineNumber numer linii tramwajowej (np. "17", "9", "33")
-     * @return surowy ciąg znaków w formacie JSON z odpowiedzią API ZTM
-     */
-    public String fetchTramPositions(String lineNumber) {
-        // type = 2 oznacza pojazdy typu TRAM (tramwaje)
-        return fetchRawVehicleData(2, lineNumber);
-    }
-
-    /**
-     * Asynchronicznie pobiera pozycje GPS wszystkich aktywnych tramwajów (type = 2).
-     *
-     * @return CompletableFuture zawierający odpowiedź JSON
-     */
-    public CompletableFuture<String> fetchTramPositionsAsync() {
-        return fetchRawVehicleDataAsync(2);
     }
 }
