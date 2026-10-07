@@ -13,6 +13,7 @@ import pl.j.reinmar.mapwaw.wtp.ui.view.MapPanel;
 import javax.swing.*;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -105,6 +106,7 @@ public class MapController {
 
             List<DepartureRow> rows = departures.stream()
                     .filter(dep -> isTransportTypeAllowed(dep, showBuses, showTrams, showMetro))
+                    .sorted(getDepartureComparator(departureBoardPanel.getSelectedSortOption()))
                     .map(dep -> mapToDepartureRow(dep, now))
                     .collect(Collectors.toList());
 
@@ -118,6 +120,19 @@ public class MapController {
                 departureBoardPanel.getTableModel().setDepartures(rows);
             }
         });
+    }
+
+    private Comparator<Departure> getDepartureComparator(DepartureBoardPanel.SortOption option) {
+        // Opóźnienie jest obecnie stałe (0), więc czas przybycia == czas rozkładowy
+        Comparator<Departure> byTime = Comparator.comparing(Departure::getDepartureTime,
+                Comparator.nullsLast(Comparator.naturalOrder()));
+        if (option == DepartureBoardPanel.SortOption.LINE) {
+            Comparator<Departure> byLine = Comparator.comparing(
+                    dep -> dep.getLine() != null ? dep.getLine().getLineNumber() : null,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+            return byLine.thenComparing(byTime);
+        }
+        return byTime;
     }
 
     private boolean isTransportTypeAllowed(Departure dep, boolean showBuses, boolean showTrams, boolean showMetro) {

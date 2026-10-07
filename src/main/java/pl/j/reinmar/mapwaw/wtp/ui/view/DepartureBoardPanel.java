@@ -29,6 +29,24 @@ public class DepartureBoardPanel extends JPanel {
     private JCheckBox tramCheckBox;
     private JCheckBox metroCheckBox;
 
+    public enum SortOption {
+        ARRIVAL_TIME("Czas przybycia"),
+        LINE("Linia");
+
+        private final String label;
+
+        SortOption(String label) {
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
+    }
+
+    private JComboBox<SortOption> sortComboBox;
+
     // Zmienne do obsługi CardLayout (Krok 76)
     private JPanel centerCardPanel;
     private CardLayout cardLayout;
@@ -81,6 +99,12 @@ public class DepartureBoardPanel extends JPanel {
         filterPanel.add(busCheckBox);
         filterPanel.add(tramCheckBox);
         filterPanel.add(metroCheckBox);
+
+        // Sortowanie (Krok 77)
+        sortComboBox = new JComboBox<>(SortOption.values());
+        sortComboBox.addActionListener(filterListener);
+        filterPanel.add(new JLabel("Sortuj:"));
+        filterPanel.add(sortComboBox);
         headerPanel.add(filterPanel, BorderLayout.SOUTH);
 
         add(headerPanel, BorderLayout.NORTH);
@@ -162,6 +186,7 @@ public class DepartureBoardPanel extends JPanel {
     }
 
     public DepartureTableModel getTableModel() { return tableModel; }
+    public SortOption getSelectedSortOption() { return (SortOption) sortComboBox.getSelectedItem(); }
     public boolean isBusFilterActive() { return busCheckBox.isSelected(); }
     public boolean isTramFilterActive() { return tramCheckBox.isSelected(); }
     public boolean isMetroFilterActive() { return metroCheckBox.isSelected(); }
