@@ -20,12 +20,15 @@ import java.util.Collection;
 
 /**
  * Nakładka na mapę (Painter) odpowiedzialna za renderowanie i rysowanie
- * aktualnych pozycji pojazdów na mapie z obracaniem ikon oraz dodawaniem
- * etykiet z numerem linii nad ikonką pojazdu.
+ * aktualnych pozycji pojazdów na mapie. Zaimplementowano optymalizację przerysowywania (Culling)
+ * ograniczającą rysowanie pojazdów i etykiet wyłącznie do aktualnego obszaru widoku (Viewport Bounds).
  */
 public class VehicleOverlayPainter implements Painter<JXMapViewer> {
 
     private static final Logger logger = LoggerFactory.getLogger(VehicleOverlayPainter.class);
+
+    // Margines bezpieczeństwa w pikselach dla obiektów usytuowanych przy samej krawędzi kadru
+    private static final int VIEWPORT_MARGIN_PIXELS = 40;
 
     private final RealtimeVehicleCache vehicleCache;
 
@@ -42,9 +45,6 @@ public class VehicleOverlayPainter implements Painter<JXMapViewer> {
         loadVehicleIcons();
     }
 
-    /**
-     * Wczytuje ikony pojazdów z folderu zasobów (resources/icons).
-     */
     private void loadVehicleIcons() {
         this.busIcon = loadIconFromClasspath("icons/bus.png");
         this.tramIcon = loadIconFromClasspath("icons/tram.png");
@@ -80,39 +80,56 @@ public class VehicleOverlayPainter implements Painter<JXMapViewer> {
 
         Graphics2D g2d = (Graphics2D) g.create();
 
-        // Uwzględnienie przesunięcia widoku (viewport bounds) JXMapViewer2
+        // KROK 63: Pobranie obszaru widocznego ekranu (Viewport) w pikselach globalnych
         Rectangle viewportBounds = map.getViewportBounds();
+
+        // Rozszerzenie prostokąta widoczności o margines bezpieczeństwa dla etykiet/ikon przy krawędziach
+        Rectangle expandedViewport = new Rectangle(
+                viewportBounds.x - VIEWPORT_MARGIN_PIXELS,
+                viewportBounds.y - VIEWPORT_MARGIN_PIXELS,
+                viewportBounds.width + (VIEWPORT_MARGIN_PIXELS * 2),
+                viewportBounds.height + (VIEWPORT_MARGIN_PIXELS * 2)
+        );
+
+        // Przesunięcie kontekstu graficznego AWT uwzględniające lewy górny róg widoku
         g2d.translate(-viewportBounds.x, -viewportBounds.y);
 
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 
+        int totalVehicles = positions.size();
+        int renderedVehicles = 0;
+
         for (LiveVehiclePosition pos : positions) {
             if (pos.getLatitude() == 0.0 && pos.getLongitude() == 0.0) {
                 continue;
             }
 
-            // Konwersja pozycji geograficznej na piksele ekranu
+            // Konwersja pozycji geograficznej na piksele mapy
             GeoPosition geoPos = new GeoPosition(pos.getLatitude(), pos.getLongitude());
             Point2D point = map.getTileFactory().geoToPixel(geoPos, map.getZoom());
 
             int x = (int) point.getX();
             int y = (int) point.getY();
 
-            // 1. Rysowanie obróconej ikony pojazdu
-            drawRotatedVehicleIcon(g2d, x, y, pos);
+            // KROK 63: FRUSTUM CULLING – Odrzucanie obiektów poza widocznym kadrem mapy
+            if (!expandedViewport.contains(x, y)) {
+                continue; // Pominięcie rysowania pojazdów znajdujących się poza widocznym obszarem okna
+            }
 
-            // KROK 60: Rysowanie etykiety z numerem linii nad ikonką pojazdu
+            // Rysowanie ikony oraz etykiety wyłącznie dla obiektów wewnątrz widocznego kadrze
+            drawRotatedVehicleIcon(g2d, x, y, pos);
             drawLineLabelAboveVehicle(g2d, x, y, pos);
+            renderedVehicles++;
         }
 
         g2d.dispose();
+
+        logger.trace("Optymalizacja przerysowywania: Wyrenderowano {} z {} pojazdów (odrzucono poza kadrem: {}).",
+                renderedVehicles, totalVehicles, (totalVehicles - renderedVehicles));
     }
 
-    /**
-     * Rysuje obróconą ikonę pojazdu w punkcie (x, y) na podstawie wyliczonego azymutu (bearing).
-     */
     private void drawRotatedVehicleIcon(Graphics2D g2d, int x, int y, LiveVehiclePosition vehicle) {
         BufferedImage icon = resolveVehicleIcon(vehicle);
         float bearing = vehicle.getBearing();
@@ -135,9 +152,6 @@ public class VehicleOverlayPainter implements Painter<JXMapViewer> {
         }
     }
 
-    /**
-     * KROK 60: Rysuje czytelną etykietę z numerem linii w ramce z zaokrąglonymi rogami tuż nad ikoną pojazdu.
-     */
     private void drawLineLabelAboveVehicle(Graphics2D g2d, int x, int y, LiveVehiclePosition vehicle) {
         String lineNumber = vehicle.getLineNumber();
         if (lineNumber == null || lineNumber.isBlank()) {
@@ -156,21 +170,17 @@ public class VehicleOverlayPainter implements Painter<JXMapViewer> {
         int boxWidth = textWidth + (paddingX * 2);
         int boxHeight = textHeight + (paddingY * 2);
 
-        // Pozycjonowanie etykiety nad ikonką pojazdu
         int boxX = x - (boxWidth / 2);
         int boxY = y - 22;
 
-        // Tło etykiety
         g2d.setColor(new Color(255, 255, 255, 230));
         g2d.fillRoundRect(boxX, boxY, boxWidth, boxHeight, 6, 6);
 
-        // Obramowanie etykiety
         Color borderCol = isTram(vehicle) ? new Color(204, 0, 0) : new Color(0, 102, 204);
         g2d.setColor(borderCol);
         g2d.setStroke(new BasicStroke(1.2f));
         g2d.drawRoundRect(boxX, boxY, boxWidth, boxHeight, 6, 6);
 
-        // Tekst numeru linii
         int textX = boxX + paddingX;
         int textY = boxY + textHeight + (paddingY / 2) - 1;
         g2d.setColor(Color.BLACK);
