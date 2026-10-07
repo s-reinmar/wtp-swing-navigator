@@ -11,9 +11,9 @@ import javax.swing.*;
 import java.awt.*;
 
 /**
- * Komponent interfejsu Swing/AWT opakowujący silnik mapy JXMapViewer2.
- * Odpowiada za bezpieczną inicjalizację fabryki kafelków OpenStreetMap (HTTPS)
- * oraz dostarczanie kontenera widoku geograficznego.
+ * Komponent interfejsu Swing/AWT reprezentujący kontener mapy OpenStreetMap.
+ * Odpowiada za skonfigurowanie dostawcy kafelków (TileFactory) z obsługą szyfrowanego
+ * protokołu HTTPS oraz optymalizacją pobierania w tle.
  */
 public class MapPanel extends JPanel {
 
@@ -22,29 +22,33 @@ public class MapPanel extends JPanel {
     private final JXMapViewer mapViewer;
 
     /**
-     * Domyślny konstruktor inicjalizujący pakiet komponentu mapy.
+     * Domyślny konstruktor inicjalizujący silnik mapy JXMapViewer2 i fabrykę kafelków OSM.
      */
     public MapPanel() {
-        logger.info("Inicjalizacja komponentu MapPanel i oprawy JXMapViewer2...");
+        logger.info("Inicjalizacja komponentu MapPanel...");
         setLayout(new BorderLayout());
 
-        // 1. Utworzenie instancji JXMapViewer
+        // KROK 52: Wymuszenie unikalnego nagłówka User-Agent (wymagane przez serwery OpenStreetMap)
+        System.setProperty("http.agent", "WtpSwingNavigator/1.0 (pl.j.reinmar.mapwaw.wtp)");
+
         this.mapViewer = new JXMapViewer();
 
-        // 2. Skonfigurowanie dostawcy kafelków OpenStreetMap po protokole HTTPS
+        // KROK 52: Skonfigurowanie dostawcy kafelków mapy (TileFactory) wskazanego na serwery OpenStreetMap
         TileFactoryInfo info = new OSMTileFactoryInfo("OpenStreetMap", "https://tile.openstreetmap.org");
         DefaultTileFactory tileFactory = new DefaultTileFactory(info);
-        tileFactory.setThreadPoolSize(8); // Zwiększenie puli wątków do wielowątkowego pobierania kafelków
+
+        // Zwiększenie wielowątkowej puli pobierania kafelków w tle dla zachowania płynności UI
+        tileFactory.setThreadPoolSize(8);
+
         this.mapViewer.setTileFactory(tileFactory);
 
-        // 3. Dodanie komponentu mapy w centralnym obszarze układu
         add(mapViewer, BorderLayout.CENTER);
 
-        logger.info("Komponent MapPanel z instancją JXMapViewer2 został skonfigurowany.");
+        logger.info("Dostawca kafelków mapy OpenStreetMap (TileFactory po HTTPS) został pomyślnie skonfigurowany.");
     }
 
     /**
-     * Zwraca wewnętrzną instancję JXMapViewer w celu konfiguracji widoków, nakładek i zdarzeń.
+     * Zwraca wewnętrzną instancję JXMapViewer.
      *
      * @return instancja JXMapViewer
      */
