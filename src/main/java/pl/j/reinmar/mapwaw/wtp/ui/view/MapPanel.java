@@ -20,9 +20,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Komponent interfejsu Swing/AWT reprezentujący kontener mapy OpenStreetMap.
- * Odpowiada za skonfigurowanie dostawcy kafelków (TileFactory po HTTPS),
- * obsługę zdarzeń myszy oraz nakładkę WaypointPainter do wyświetlania punktów na mapie.
+ * Komponent interfejsu Swing/AWT reprezentujący kontener mapy OpenStreetMap
+ * z własnym rendererem przystanków StopWaypointRenderer.
  */
 public class MapPanel extends JPanel {
 
@@ -36,45 +35,36 @@ public class MapPanel extends JPanel {
     private final WaypointPainter<Waypoint> waypointPainter;
     private final Set<Waypoint> waypoints = new HashSet<>();
 
-    /**
-     * Domyślny konstruktor inicjalizujący silnik mapy JXMapViewer2 oraz nakładkę WaypointPainter.
-     */
     public MapPanel() {
-        logger.info("Inicjalizacja komponentu MapPanel wraz z nakładką WaypointPainter...");
+        logger.info("Inicjalizacja komponentu MapPanel z StopWaypointRenderer...");
         setLayout(new BorderLayout());
 
-        // Wymuszenie User-Agent dla serwerów OpenStreetMap
         System.setProperty("http.agent", "WtpSwingNavigator/1.0 (pl.j.reinmar.mapwaw.wtp)");
 
         this.mapViewer = new JXMapViewer();
 
-        // Skonfigurowanie dostawcy kafelków (TileFactory po HTTPS)
         TileFactoryInfo info = new OSMTileFactoryInfo("OpenStreetMap", "https://tile.openstreetmap.org");
         DefaultTileFactory tileFactory = new DefaultTileFactory(info);
         tileFactory.setThreadPoolSize(8);
         this.mapViewer.setTileFactory(tileFactory);
 
-        // Ustawienie punktu startowego (Centrum Warszawy) oraz domyślnego poziomu zoom
         GeoPosition warsawCenter = new GeoPosition(WARSAW_CENTER_LAT, WARSAW_CENTER_LON);
         this.mapViewer.setAddressLocation(warsawCenter);
         this.mapViewer.setZoom(DEFAULT_ZOOM_LEVEL);
 
-        // Obsługa zdarzeń myszy (przesuwanie przeciągnięciem + zoom rolką myszy)
         setupMouseNavigation();
 
-        // KROK 55: Utworzenie i podpięcie nakładki WaypointPainter dla wyświetlania punktów na mapie
+        // KROK 56: Podpięcie customowego StopWaypointRenderer pod WaypointPainter
         this.waypointPainter = new WaypointPainter<>();
+        this.waypointPainter.setRenderer(new StopWaypointRenderer());
         this.waypointPainter.setWaypoints(this.waypoints);
         this.mapViewer.setOverlayPainter(this.waypointPainter);
 
         add(mapViewer, BorderLayout.CENTER);
 
-        logger.info("Nakładka WaypointPainter została pomyślnie skonfigurowana.");
+        logger.info("Customowy StopWaypointRenderer został pomyślnie podpięty do nakładki mapy.");
     }
 
-    /**
-     * Podpina słuchaczy zdarzeń przeciągania myszą oraz obsługi rolki myszy.
-     */
     private void setupMouseNavigation() {
         MouseInputListener panListener = new PanMouseInputListener(mapViewer);
         this.mapViewer.addMouseListener(panListener);
@@ -90,11 +80,6 @@ public class MapPanel extends JPanel {
         });
     }
 
-    /**
-     * KROK 55: Ustawia nową kolekcję punktów (Waypoints) do wyświetlenia na mapie.
-     *
-     * @param newWaypoints nowa kolekcja punktów
-     */
     public void setWaypoints(Collection<? extends Waypoint> newWaypoints) {
         this.waypoints.clear();
         if (newWaypoints != null) {
@@ -104,41 +89,22 @@ public class MapPanel extends JPanel {
         this.mapViewer.repaint();
     }
 
-    /**
-     * Dodaje pojedynczy punkt na mapie.
-     *
-     * @param latitude  szerokość geograficzna
-     * @param longitude długość geograficzna
-     */
     public void addWaypoint(double latitude, double longitude) {
         this.waypoints.add(new DefaultWaypoint(new GeoPosition(latitude, longitude)));
         this.waypointPainter.setWaypoints(this.waypoints);
         this.mapViewer.repaint();
     }
 
-    /**
-     * Usuwa wszystkie punkty z nakładki mapy.
-     */
     public void clearWaypoints() {
         this.waypoints.clear();
         this.waypointPainter.setWaypoints(this.waypoints);
         this.mapViewer.repaint();
     }
 
-    /**
-     * Zwraca wewnętrzną instancję JXMapViewer.
-     *
-     * @return instancja JXMapViewer
-     */
     public JXMapViewer getMapViewer() {
         return mapViewer;
     }
 
-    /**
-     * Zwraca instancję nakładki WaypointPainter.
-     *
-     * @return instancja WaypointPainter
-     */
     public WaypointPainter<Waypoint> getWaypointPainter() {
         return waypointPainter;
     }
