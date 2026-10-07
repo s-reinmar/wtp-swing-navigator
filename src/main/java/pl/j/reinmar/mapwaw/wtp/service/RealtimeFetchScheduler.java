@@ -15,7 +15,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
- * Usługa cykliczna odpytująca API UM w tle z reakcją na błędy braku połączenia internetowego.
+ * Usługa tła wykorzystująca ScheduledExecutorService do cyklicznego odpytywania
+ * interfejsu REST API ZTM Warszawa o aktualne pozycje GPS autobusów i tramwajów.
+ *
+ * Zapewnia automatyczne czyszczenie nieaktywnych pojazdów z pamięci cache (TTL),
+ * monitorowanie połączenia oraz bezpieczną aktualizację komponentów Swing (EDT).
  */
 public class RealtimeFetchScheduler {
 
@@ -31,9 +35,16 @@ public class RealtimeFetchScheduler {
     private ScheduledFuture<?> scheduledTask;
 
     private Runnable uiRefreshCallback;
-    private Consumer<Boolean> connectionStatusCallback; // Status sieci (true = OK, false = Błąd)
+    private Consumer<Boolean> connectionStatusCallback; // Powiadomienie paska stanu (true = OK, false = Brak połączenia)
     private boolean lastConnectionState = true;
 
+    /**
+     * Konstruktor usługi harmonogramu odświeżania pozycji GPS na żywo.
+     *
+     * @param apiClient       klient HTTP do komunikacji z serwerami ZTM
+     * @param vehicleCache    współbieżna pamięć podręczna pozycji pojazdów (ConcurrentHashMap)
+     * @param delayCalculator serwis kalkulujący opóźnienia względem statycznego rozkładu
+     */
     public RealtimeFetchScheduler(WtpRealtimeApiClient apiClient,
                                   RealtimeVehicleCache vehicleCache,
                                   DelayCalculatorService delayCalculator) {
@@ -43,33 +54,46 @@ public class RealtimeFetchScheduler {
         this.delayCalculator = delayCalculator;
     }
 
+    /**
+     * Rejestruje akcję odświeżania widoku UI (np. repaint mapy), która zostanie
+     * bezpiecznie wykonana na wątku Swing Event Dispatch Thread (EDT).
+     */
     public void setUiRefreshCallback(Runnable uiRefreshCallback) {
         this.uiRefreshCallback = uiRefreshCallback;
     }
 
     /**
-     * Rejestruje nasłuchiwanie zmiany stanu połączenia z siecią (do paska statusu UI).
+     * Rejestruje nasłuchiwanie zmiany stanu połączenia z siecią API ZTM.
      */
     public void setConnectionStatusCallback(Consumer<Boolean> connectionStatusCallback) {
         this.connectionStatusCallback = connectionStatusCallback;
     }
 
+    /**
+     * Uruchamia cykliczne odpytywanie API w tle z domyślnym interwałem 10 sekund.
+     */
     public synchronized void start() {
         start(DEFAULT_INTERVAL_SECONDS);
     }
 
+    /**
+     * Uruchamia cykliczne odpytywanie API w tle ze wskazanym interwałem w sekundach (10–15 s).
+     *
+     * @param intervalSeconds interwał odświeżania w sekundach
+     */
     public synchronized void start(int intervalSeconds) {
         if (isRunning()) {
+            logger.warn("Usługa RealtimeFetchScheduler jest już uruchomiona.");
             return;
         }
 
         scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread thread = new Thread(r, "WTP-RealtimeFetch-Thread");
-            thread.setDaemon(true);
+            thread.setDaemon(true); // Wątek typu Daemon nie blokuje zamknięcia aplikacji
             return thread;
         });
 
-        logger.info("Uruchamianie pętli pobierania GPS co {} s z obsługą braków połączenia...", intervalSeconds);
+        logger.info("Uruchamianie pętli pobierania danych GPS co {} sekund w tle...", intervalSeconds);
 
         scheduledTask = scheduler.scheduleAtFixedRate(
                 this::fetchAndProcessRealtimeData,
@@ -79,43 +103,71 @@ public class RealtimeFetchScheduler {
         );
     }
 
+    /**
+     * Zatrzymuje pętlę odpytywania API w tle i zwalnia zasoby wątku.
+     */
     public synchronized void stop() {
         if (scheduledTask != null) {
             scheduledTask.cancel(true);
         }
         if (scheduler != null && !scheduler.isShutdown()) {
-            scheduler.shutdownNow();
+            scheduler.shutdown();
+            try {
+                if (!scheduler.awaitTermination(2, TimeUnit.SECONDS)) {
+                    scheduler.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                scheduler.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
         logger.info("Usługa RealtimeFetchScheduler została zatrzymana.");
     }
 
+    /**
+     * Sprawdza, czy zadanie cykliczne aktualnie pracuje.
+     */
     public synchronized boolean isRunning() {
         return scheduledTask != null && !scheduledTask.isCancelled();
     }
 
+    /**
+     * Główna metoda wykonywana cyklicznie w osobnym wątku tła.
+     */
     private void fetchAndProcessRealtimeData() {
         try {
+            logger.debug("Rozpoczęcie cyklu pobierania danych GPS z API ZTM...");
+
+            // 1. Pobranie surowych ramek JSON z API ZTM (type=1: Autobusy, type=2: Tramwaje)
             String busJson = apiClient.fetchBusPositions();
             String tramJson = apiClient.fetchTramPositions();
 
-            // KROK 45: Sprawdzenie, czy zapytanie się powiodło (pusty wynik oznacz błąd sieci/timeout)
+            // Sprawdzenie, czy serwer odpowiedział (pusty ciąg świadczy o braku połączenia lub walidacji)
             if (busJson.isBlank() && tramJson.isBlank()) {
                 notifyConnectionState(false);
-                logger.warn("Brak połączenia lub serwer UM nie odpowiada. Pomięcie cyklu aktualizacji.");
+                logger.warn("Brak odpowiedzi z API ZTM lub brak połączenia internetowego. Pomięcie cyklu.");
+
+                // Mimo braku nowej ramki wywołujemy wygasanie TTL dla starych pojazdów
+                vehicleCache.cleanExpiredPositions();
                 return;
             }
 
-            // Połączenie udane
+            // Połączenie powiodło się
             notifyConnectionState(true);
 
+            // 2. Parsowanie odpowiedzi JSON do obiektów domenowych LiveVehiclePosition
             List<LiveVehiclePosition> busPositions = jsonParser.parseVehiclePositions(busJson);
             List<LiveVehiclePosition> tramPositions = jsonParser.parseVehiclePositions(tramJson);
 
+            int updatedCount = 0;
+
+            // 3. Obliczenie opóźnień i aktualizacja wpisów w ConcurrentHashMap (RealtimeVehicleCache)
             for (LiveVehiclePosition pos : busPositions) {
                 if (delayCalculator != null) {
                     delayCalculator.calculateAndUpdateDelay(pos);
                 }
                 vehicleCache.updatePosition(pos);
+                updatedCount++;
             }
 
             for (LiveVehiclePosition pos : tramPositions) {
@@ -123,18 +175,29 @@ public class RealtimeFetchScheduler {
                     delayCalculator.calculateAndUpdateDelay(pos);
                 }
                 vehicleCache.updatePosition(pos);
+                updatedCount++;
             }
 
+            // 4. KROK 46: Wywołanie mechanizmu wygasania (TTL) nieaktywnych/przestarzałych pojazdów
+            int evictedCount = vehicleCache.cleanExpiredPositions();
+
+            logger.info("Zakończono cykl GPS. Zaktualizowano pojazdów: {} (Busem: {}, Tramwajem: {}). Usunięto przestarzałych (TTL): {}",
+                    updatedCount, busPositions.size(), tramPositions.size(), evictedCount);
+
+            // 5. Zlecenie odświeżenia interfejsu graficznego w bezpiecznym wątku Swing EDT
             if (uiRefreshCallback != null) {
                 SwingUtilities.invokeLater(uiRefreshCallback);
             }
 
         } catch (Exception e) {
             notifyConnectionState(false);
-            logger.error("Awarjna obsługa cyklu GPS: {}", e.getMessage());
+            logger.error("Awarjna obsługa cyklu odświeżania pozycji GPS w tle: {}", e.getMessage(), e);
         }
     }
 
+    /**
+     * Powiadamia warstwę UI o zmianie stanu połączenia z serwerem API.
+     */
     private void notifyConnectionState(boolean isConnected) {
         if (this.lastConnectionState != isConnected) {
             this.lastConnectionState = isConnected;
