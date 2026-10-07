@@ -7,32 +7,30 @@ import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
 
 /**
  * Parser odpowiedzialny za przetwarzanie danych przystanków z pliku stops.txt (standard GTFS).
- * Wyciąga identyfikatory, nazwy, współrzędne geograficzne oraz kody słupków przystankowych.
+ * Zawiera walidację współrzędnych geograficznych odrzucającą przystanki spoza Warszawy.
  */
 public class StopSectionParser {
 
     private static final Logger logger = LoggerFactory.getLogger(StopSectionParser.class);
 
     /**
-     * Parsuje pojedynczą linię CSV z pliku stops.txt i rejestruje przystanek w repozytorium.
+     * Parsuje pojedynczą linię CSV z pliku stops.txt, waliduje współrzędne i rejestruje przystanek w repozytorium.
      *
      * @param line       linia tekstu z pliku stops.txt
      * @param repository docelowy magazyn danych w pamięci RAM
-     * @return     true jeśli pomyślnie sparsowano i dodano przystanek, false w przeciwnym razie
+     * @return true jeśli pomyślnie sparsowano, zweryfikowano i dodano przystanek, false w przeciwnym razie
      */
     public boolean parseAndAddStop(String line, ScheduleRepository repository) {
         if (line == null || line.isBlank()) {
             return false;
         }
 
-        // Pomijamy nagłówek pliku GTFS stops.txt
-        String trimmed = line.trim();
+        String trimmed = ScheduleFormatValidator.sanitizeLine(line);
         if (trimmed.startsWith("stop_id") || trimmed.startsWith("\"stop_id\"")) {
             return false;
         }
 
         try {
-            // Rozdzielenie kolumn CSV z uwzględnieniem ewentualnych cudzysłowów
             String[] parts = trimmed.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1);
             if (parts.length < 4) {
                 return false;
@@ -40,27 +38,30 @@ public class StopSectionParser {
 
             String id = cleanValue(parts[0]);
             String name = cleanValue(parts[1]);
-            double latitude = Double.parseDouble(cleanValue(parts[2]));
-            double longitude = Double.parseDouble(cleanValue(parts[3]));
+            double latitude = ScheduleFormatValidator.parseSafeDouble(parts[2], 0.0);
+            double longitude = ScheduleFormatValidator.parseSafeDouble(parts[3], 0.0);
+
+            // KROK 28: Walidacja danych po parsowaniu – odrzucanie przystanków spoza obszaru Warszawy
+            if (!ScheduleFormatValidator.isValidWarsawCoordinates(latitude, longitude)) {
+                logger.debug("Odrzucono przystanek '{}' (ID: {}) ze względu na współrzędne poza Warszawą: ({}, {})",
+                        name, id, latitude, longitude);
+                return false;
+            }
 
             // Opcjonalne pola w standardzie GTFS (kod słupka, dostępność)
             String code = parts.length > 4 && !parts[4].isBlank() ? cleanValue(parts[4]) : "";
             boolean wheelchairAccessible = parts.length > 5 && "1".equals(cleanValue(parts[5]));
 
-            // Tworzenie encji i dodanie do magazynu in-memory
             Stop stop = new Stop(id, name, code, latitude, longitude, wheelchairAccessible);
             repository.addStop(stop);
 
             return true;
         } catch (Exception e) {
-            logger.debug("Błąd parsowania linii przystanku [{}]: {}", trimmed, e.getMessage());
+            logger.debug("Błąd parsowania i walidacji linii przystanku [{}]: {}", trimmed, e.getMessage());
             return false;
         }
     }
 
-    /**
-     * Pomocnicza metoda usuwająca zbędne cudzysłowy wokół wartości CSV.
-     */
     private String cleanValue(String raw) {
         if (raw == null) {
             return "";
