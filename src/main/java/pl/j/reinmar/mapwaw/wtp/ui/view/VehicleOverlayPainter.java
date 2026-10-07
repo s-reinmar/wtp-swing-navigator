@@ -11,6 +11,7 @@ import pl.j.reinmar.mapwaw.wtp.repository.RealtimeVehicleCache;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
+import java.awt.geom.AffineTransform;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -19,7 +20,7 @@ import java.util.Collection;
 
 /**
  * Nakładka na mapę (Painter) odpowiedzialna za renderowanie i rysowanie
- * aktualnych pozycji pojazdów z uwzględnieniem typu transportu (autobus vs tramwaj).
+ * aktualnych pozycji pojazdów na mapie z obracaniem ikon zgodnie z kątem kierunku jazdy (bearing).
  */
 public class VehicleOverlayPainter implements Painter<JXMapViewer> {
 
@@ -31,7 +32,7 @@ public class VehicleOverlayPainter implements Painter<JXMapViewer> {
     private BufferedImage tramIcon;
 
     /**
-     * Konstruktor przyjmujący pamięć podręczną pozycji pojazdów oraz ładujący ikony graficzne.
+     * Konstruktor przyjmujący pamięć podręczną pozycji pojazdów.
      *
      * @param vehicleCache współbieżna pamięć podręczna RealtimeVehicleCache
      */
@@ -97,37 +98,41 @@ public class VehicleOverlayPainter implements Painter<JXMapViewer> {
             int x = (int) point.getX();
             int y = (int) point.getY();
 
-            // KROK 58: Wyznaczenie i narysowanie właściwej ikony pojazdu
-            drawVehicleWithIcon(g2d, x, y, pos);
+            // KROK 59: Rysowanie ikony z uwzględnieniem kąta obrotu (bearing)
+            drawRotatedVehicleIcon(g2d, x, y, pos);
         }
 
         g2d.dispose();
     }
 
     /**
-     * Rysuje pozycję pojazdu na podstawie dedykowanej ikony (autobus/tramwaj).
+     * KROK 59: Rysuje obróconą ikonę pojazdu w punkcie (x, y) na podstawie wyliczonego azymutu (bearing).
      */
-    private void drawVehicleWithIcon(Graphics2D g2d, int x, int y, LiveVehiclePosition vehicle) {
+    private void drawRotatedVehicleIcon(Graphics2D g2d, int x, int y, LiveVehiclePosition vehicle) {
         BufferedImage icon = resolveVehicleIcon(vehicle);
+        float bearing = vehicle.getBearing(); // Wyliczony kąt kierunku jazdy w stopniach (0 - 360)
 
         if (icon != null) {
             int iconWidth = icon.getWidth();
             int iconHeight = icon.getHeight();
 
-            // Rysowanie ikony wycentrowanej w punkcie geograficznym pojazdu
+            // Zapamiętanie obecnego stanu transformacji graficznej
+            AffineTransform oldTransform = g2d.getTransform();
+
+            // Wykonanie obrotu wokół środka punktu stasowania ikony pojazdu
+            g2d.rotate(Math.toRadians(bearing), x, y);
+
             int drawX = x - (iconWidth / 2);
             int drawY = y - (iconHeight / 2);
-
             g2d.drawImage(icon, drawX, drawY, null);
+
+            // Przywrócenie transformacji sprzed obrotu
+            g2d.setTransform(oldTransform);
         } else {
-            // Fallback w przypadku braku załadowanej ikony .png
             drawFallbackMarker(g2d, x, y, isTram(vehicle));
         }
     }
 
-    /**
-     * Rozstrzyga, która ikona powinna zostać użyta na podstawie numeru linii lub typu transportu.
-     */
     private BufferedImage resolveVehicleIcon(LiveVehiclePosition vehicle) {
         if (isTram(vehicle)) {
             return tramIcon != null ? tramIcon : busIcon;
@@ -135,9 +140,6 @@ public class VehicleOverlayPainter implements Painter<JXMapViewer> {
         return busIcon != null ? busIcon : tramIcon;
     }
 
-    /**
-     * Określa, czy pojazd jest tramwajem (np. linie 1-99).
-     */
     private boolean isTram(LiveVehiclePosition vehicle) {
         if (vehicle.getLineNumber() == null || vehicle.getLineNumber().isBlank()) {
             return false;
@@ -150,9 +152,6 @@ public class VehicleOverlayPainter implements Painter<JXMapViewer> {
         }
     }
 
-    /**
-     * Zastępczy znacznik wektorowy na wypadek braku plików .png.
-     */
     private void drawFallbackMarker(Graphics2D g2d, int x, int y, boolean isTram) {
         int radius = 8;
         Color color = isTram ? new Color(230, 81, 0) : new Color(2, 119, 189);
