@@ -137,4 +137,33 @@ public class WtpRealtimeApiClient {
 
         return urlBuilder.toString();
     }
+
+    /**
+     * Pobiera pozycje GPS wszystkich aktywnych autobusów (type = 1) w czasie rzeczywistym (synchronicznie).
+     *
+     * @return surowy ciąg znaków w formacie JSON z odpowiedzą API ZTM
+     */
+    public String fetchBusPositions() {
+        return fetchBusPositions(null);
+    }
+
+    /**
+     * Pobiera pozycje GPS autobusów dla wybranej linii transportowej (type = 1).
+     *
+     * @param lineNumber numer linii autobusowej (np. "507", "111")
+     * @return surowy ciąg znaków w formacie JSON z odpowiedzą API ZTM
+     */
+    public String fetchBusPositions(String lineNumber) {
+        // type = 1 oznacza pojazdy typu BUS (autobusy)
+        return fetchRawVehicleData(1, lineNumber);
+    }
+
+    /**
+     * Asynchronicznie pobiera pozycje GPS wszystkich aktywnych autobusów (type = 1).
+     *
+     * @return CompletableFuture zawierający odpowiedź JSON
+     */
+    public CompletableFuture<String> fetchBusPositionsAsync() {
+        return fetchRawVehicleDataAsync(1);
+    }
 }
