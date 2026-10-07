@@ -62,7 +62,7 @@ public class StopSearchTextField extends JTextField {
                                                           boolean isSelected, boolean cellHasFocus) {
                 JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
                 if (value instanceof Stop stop) {
-                    label.setText("🏏 " + stop.name() + " [" + stop.id() + "]");
+                    label.setText("🏏 " + stop.getName() + " [" + stop.getId() + "]");
                 }
                 return label;
             }
@@ -180,9 +180,9 @@ public class StopSearchTextField extends JTextField {
      * Wybiera dany przystanek, uzupełnia pole tekstowe oraz wywołuje zarejestrowaną akcję.
      */
     private void selectStop(Stop stop) {
-        setText(stop.name());
+        setText(stop.getName());
         suggestionPopup.setVisible(false);
-        logger.info("Wybrano przystanek z listy podpowiedzi: {} [{}]", stop.name(), stop.id());
+        logger.info("Wybrano przystanek z listy podpowiedzi: {} [{}]", stop.getName(), stop.getId());
 
         if (onStopSelectedCallback != null) {
             onStopSelectedCallback.accept(stop);
