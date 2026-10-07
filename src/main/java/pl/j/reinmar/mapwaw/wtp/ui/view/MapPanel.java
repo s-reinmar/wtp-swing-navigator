@@ -4,19 +4,25 @@ import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.OSMTileFactoryInfo;
 import org.jxmapviewer.input.PanMouseInputListener;
 import org.jxmapviewer.viewer.DefaultTileFactory;
+import org.jxmapviewer.viewer.DefaultWaypoint;
 import org.jxmapviewer.viewer.GeoPosition;
 import org.jxmapviewer.viewer.TileFactoryInfo;
+import org.jxmapviewer.viewer.Waypoint;
+import org.jxmapviewer.viewer.WaypointPainter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import javax.swing.event.MouseInputListener;
 import java.awt.*;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Komponent interfejsu Swing/AWT reprezentujący kontener mapy OpenStreetMap.
- * Odpowiada za skonfigurowanie dostawcy kafelków (TileFactory po HTTPS)
- * oraz obsługę zdarzeń myszy (przesuwanie przeciągnięciem oraz zoom rolką myszy).
+ * Odpowiada za skonfigurowanie dostawcy kafelków (TileFactory po HTTPS),
+ * obsługę zdarzeń myszy oraz nakładkę WaypointPainter do wyświetlania punktów na mapie.
  */
 public class MapPanel extends JPanel {
 
@@ -27,12 +33,14 @@ public class MapPanel extends JPanel {
     private static final int DEFAULT_ZOOM_LEVEL = 5;
 
     private final JXMapViewer mapViewer;
+    private final WaypointPainter<Waypoint> waypointPainter;
+    private final Set<Waypoint> waypoints = new HashSet<>();
 
     /**
-     * Domyślny konstruktor inicjalizujący silnik mapy JXMapViewer2 i podpinający słuchaczy zdarzeń myszy.
+     * Domyślny konstruktor inicjalizujący silnik mapy JXMapViewer2 oraz nakładkę WaypointPainter.
      */
     public MapPanel() {
-        logger.info("Inicjalizacja komponentu MapPanel wraz z obsługą zdarzeń myszy...");
+        logger.info("Inicjalizacja komponentu MapPanel wraz z nakładką WaypointPainter...");
         setLayout(new BorderLayout());
 
         // Wymuszenie User-Agent dla serwerów OpenStreetMap
@@ -51,34 +59,70 @@ public class MapPanel extends JPanel {
         this.mapViewer.setAddressLocation(warsawCenter);
         this.mapViewer.setZoom(DEFAULT_ZOOM_LEVEL);
 
-        // KROK 54: Włączenie obsługi zdarzeń myszy (przesuwanie przeciągnięciem + zoom rolką myszy)
+        // Obsługa zdarzeń myszy (przesuwanie przeciągnięciem + zoom rolką myszy)
         setupMouseNavigation();
+
+        // KROK 55: Utworzenie i podpięcie nakładki WaypointPainter dla wyświetlania punktów na mapie
+        this.waypointPainter = new WaypointPainter<>();
+        this.waypointPainter.setWaypoints(this.waypoints);
+        this.mapViewer.setOverlayPainter(this.waypointPainter);
 
         add(mapViewer, BorderLayout.CENTER);
 
-        logger.info("Nawigacja myszą (Pan & Zoom) została pomyślnie podpięta do komponentu mapy.");
+        logger.info("Nakładka WaypointPainter została pomyślnie skonfigurowana.");
     }
 
     /**
-     * Podpina słuchaczy zdarzeń zdarzeń przeciągania myszą oraz obsługi rolki myszy.
+     * Podpina słuchaczy zdarzeń przeciągania myszą oraz obsługi rolki myszy.
      */
     private void setupMouseNavigation() {
-        // 1. Słuchacz przesuwania mapy przeciągnięciem (Pan)
         MouseInputListener panListener = new PanMouseInputListener(mapViewer);
         this.mapViewer.addMouseListener(panListener);
         this.mapViewer.addMouseMotionListener(panListener);
 
-        // 2. Słuchacz zoomu rolką myszy w czystym Swing/AWT (bez przestarzałych adapterów)
         this.mapViewer.addMouseWheelListener(e -> {
             int currentZoom = mapViewer.getZoom();
             if (e.getWheelRotation() < 0) {
-                // Przybliżanie (mniejsza wartość zoom w JXMapViewer2 = większe zbliżenie)
                 mapViewer.setZoom(Math.max(1, currentZoom - 1));
             } else {
-                // Oddalanie (maksymalny zasięg zdefiniowany na 15)
                 mapViewer.setZoom(Math.min(15, currentZoom + 1));
             }
         });
+    }
+
+    /**
+     * KROK 55: Ustawia nową kolekcję punktów (Waypoints) do wyświetlenia na mapie.
+     *
+     * @param newWaypoints nowa kolekcja punktów
+     */
+    public void setWaypoints(Collection<? extends Waypoint> newWaypoints) {
+        this.waypoints.clear();
+        if (newWaypoints != null) {
+            this.waypoints.addAll(newWaypoints);
+        }
+        this.waypointPainter.setWaypoints(this.waypoints);
+        this.mapViewer.repaint();
+    }
+
+    /**
+     * Dodaje pojedynczy punkt na mapie.
+     *
+     * @param latitude  szerokość geograficzna
+     * @param longitude długość geograficzna
+     */
+    public void addWaypoint(double latitude, double longitude) {
+        this.waypoints.add(new DefaultWaypoint(new GeoPosition(latitude, longitude)));
+        this.waypointPainter.setWaypoints(this.waypoints);
+        this.mapViewer.repaint();
+    }
+
+    /**
+     * Usuwa wszystkie punkty z nakładki mapy.
+     */
+    public void clearWaypoints() {
+        this.waypoints.clear();
+        this.waypointPainter.setWaypoints(this.waypoints);
+        this.mapViewer.repaint();
     }
 
     /**
@@ -88,5 +132,14 @@ public class MapPanel extends JPanel {
      */
     public JXMapViewer getMapViewer() {
         return mapViewer;
+    }
+
+    /**
+     * Zwraca instancję nakładki WaypointPainter.
+     *
+     * @return instancja WaypointPainter
+     */
+    public WaypointPainter<Waypoint> getWaypointPainter() {
+        return waypointPainter;
     }
 }
