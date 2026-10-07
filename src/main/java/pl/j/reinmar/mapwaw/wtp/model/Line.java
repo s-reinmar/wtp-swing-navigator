@@ -3,7 +3,7 @@ package pl.j.reinmar.mapwaw.wtp.model;
 /**
  * Klasa domenowa reprezentująca linię komunikacyjną (np. 507, 17, M1).
  */
-public class Line {
+public class Line implements java.io.Serializable {
     private String lineNumber;          // Numer linii (np. 507, 17, M1)
     private TransportType transportType; // Typ transportu: BUS, TRAM, METRO
     private String operator;            // Przewoźnik (np. MZA, TW)

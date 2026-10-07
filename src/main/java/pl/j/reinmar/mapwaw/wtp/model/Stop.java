@@ -5,7 +5,7 @@ package pl.j.reinmar.mapwaw.wtp.model;
  * Przechowuje informacje o identyfikatorze, nazwie zespołu, numerze słupka,
  * współrzędnych geograficznych oraz dostępności dla osób niepełnosprawnych.
  */
-public class Stop {
+public class Stop implements java.io.Serializable {
     private String id;                  // Unikalny identyfikator (np. zespół + słup: 700901)
     private String name;                // Nazwa zespołu przystankowego (np. Centrum)
     private String code;                // Numer słupka (np. 01)

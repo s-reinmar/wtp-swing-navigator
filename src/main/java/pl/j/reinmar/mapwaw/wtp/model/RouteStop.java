@@ -3,7 +3,7 @@ package pl.j.reinmar.mapwaw.wtp.model;
 /**
  * Klasa domenowa reprezentująca pojedynczy krok trasy (przystanek w ramach wariantu).
  */
-public class RouteStop {
+public class RouteStop implements java.io.Serializable {
     private Stop stop;                    // Referencja do obiektu przystanku
     private int sequenceOrder;            // Kolejność na trasie (1, 2, 3...)
     private int travelTimeFromStartSec;   // Czas dojazdu od pętli początkowej w sekundach

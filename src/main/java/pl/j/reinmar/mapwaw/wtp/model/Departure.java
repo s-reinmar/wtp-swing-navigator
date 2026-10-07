@@ -5,7 +5,7 @@ import java.time.LocalTime;
 /**
  * Klasa domenowa reprezentująca rozkładowy odjazd pojazdu z przystanku.
  */
-public class Departure {
+public class Departure implements java.io.Serializable {
     private Line line;               // Linia komunikacyjna
     private Stop stop;               // Przystanek
     private LocalTime departureTime; // Godzina odjazdu

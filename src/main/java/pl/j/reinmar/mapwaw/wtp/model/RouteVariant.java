@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * Klasa domenowa reprezentująca wariant trasy (kierunek oraz uporządkowaną listę przystanków).
  */
-public class RouteVariant {
+public class RouteVariant implements java.io.Serializable {
     private String id;                  // Unikalny identyfikator wariantu
     private String lineNumber;          // Powiązany numer linii
     private String directionName;       // Nazwa przystanku docelowego (np. Gocław)

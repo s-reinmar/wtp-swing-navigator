@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
  * Pamięciowy magazyn danych (Repository) dla przystanków, linii oraz rozkładowych odjazdów.
  * Zawiera zaawansowane indeksy do wiązania odjazdów z liniami i przystankami.
  */
-public class ScheduleRepository {
+public class ScheduleRepository implements java.io.Serializable {
 
     // Indeksy w pamięci RAM
     private final Map<String, Stop> stopsById = new ConcurrentHashMap<>();
