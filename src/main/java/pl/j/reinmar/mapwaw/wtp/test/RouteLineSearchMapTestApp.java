@@ -7,6 +7,7 @@ import org.jxmapviewer.painter.Painter;
 import org.jxmapviewer.viewer.DefaultTileFactory;
 import org.jxmapviewer.viewer.GeoPosition;
 import org.jxmapviewer.viewer.TileFactoryInfo;
+import pl.j.reinmar.mapwaw.wtp.config.AppConfig;
 
 import javax.swing.*;
 import javax.swing.event.MouseInputListener;
@@ -123,21 +124,19 @@ public class RouteLineSearchMapTestApp extends JFrame {
                     g.drawLine((int) p1.getX(), (int) p1.getY(), (int) p2.getX(), (int) p2.getY());
                 }
 
-                // 2. Rysowanie subtelnych punktów węzłowych / przesiadkowych (bez wielkich pinezek)
+                // 2. Rysowanie subtelnych punktów węzłowych / przesiadkowych
                 for (int i = 0; i < points.size(); i++) {
                     Point2D pt = map.getTileFactory().geoToPixel(points.get(i), map.getZoom());
                     int x = (int) pt.getX();
                     int y = (int) pt.getY();
 
                     if (i == 0 || i == points.size() - 1) {
-                        // Punkt startowy / przesiadkowy / końcowy
                         g.setColor(Color.WHITE);
                         g.fillOval(x - 6, y - 6, 12, 12);
                         g.setColor(leg.color());
                         g.setStroke(new BasicStroke(3f));
                         g.drawOval(x - 6, y - 6, 12, 12);
                     } else {
-                        // Przystanek pośredni
                         g.setColor(leg.color());
                         g.fillOval(x - 3, y - 3, 6, 6);
                     }
@@ -162,7 +161,7 @@ public class RouteLineSearchMapTestApp extends JFrame {
     private final HttpClient httpClient;
 
     public RouteLineSearchMapTestApp() {
-        super("WTP Warszawa — Trasowanie i obsługa przesiadek (Bez pinezek)");
+        super("WTP Warszawa — Trasowanie i obsługa przesiadek (z AppConfig)");
 
         System.setProperty("http.agent", "WtpSwingNavigator/1.0 (pl.warsaw.wtp)");
 
@@ -175,7 +174,7 @@ public class RouteLineSearchMapTestApp extends JFrame {
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
 
-        // 1. Konfiguracja JXMapViewer2 HTTPS
+        // 1. Konfiguracja JXMapViewer2 HTTPS z uwzględnieniem AppConfig (jeśli potrzebne endpointy)
         mapViewer = new JXMapViewer();
         TileFactoryInfo info = new OSMTileFactoryInfo("OpenStreetMap", "https://tile.openstreetmap.org");
         DefaultTileFactory tileFactory = new DefaultTileFactory(info);
@@ -198,13 +197,12 @@ public class RouteLineSearchMapTestApp extends JFrame {
             }
         });
 
-        // Wprowadzenie Paintera Liniowego (BRAK WaypointPaintera z pinezkami)
         polylinePainter = new RoutePolylinePainter();
         mapViewer.setOverlayPainter(polylinePainter);
 
         // 2. Formularz wyszukiwania Z / DO (Góra)
         JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 10));
-        searchPanel.setBorder(BorderFactory.createTitledBorder("Wyszukiwarka połączeń z przesiadkami"));
+        searchPanel.setBorder(BorderFactory.createTitledBorder("Wyszukiwarka połączeń z przesiadkami (AppConfig aktywny)"));
 
         searchPanel.add(new JLabel("🟢 Z:"));
         startAddressField = new JTextField("Rondo Daszyńskiego", 18);
@@ -228,7 +226,6 @@ public class RouteLineSearchMapTestApp extends JFrame {
         routeJList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         routeJList.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 13));
 
-        // Karta ze szczegółami przesiadek (HTML)
         routeDetailPane = new JEditorPane();
         routeDetailPane.setContentType("text/html");
         routeDetailPane.setEditable(false);
@@ -256,7 +253,7 @@ public class RouteLineSearchMapTestApp extends JFrame {
 
         // 4. Pasek statusu
         JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        statusLabel = new JLabel("Wpisz adresy i kliknij 'Szukaj trasy'.");
+        statusLabel = new JLabel("Konfiguracja zczytana z config.properties (API Endpoint: " + AppConfig.getApiEndpoint() + ")");
         statusPanel.add(statusLabel);
         add(statusPanel, BorderLayout.SOUTH);
 
@@ -297,7 +294,7 @@ public class RouteLineSearchMapTestApp extends JFrame {
 
                     if (!options.isEmpty()) {
                         routeJList.setSelectedIndex(0);
-                        statusLabel.setText("Narysowano trasę na mapie z podziałem na linie i przesiadki.");
+                        statusLabel.setText("Narysowano trasę na mapie z uwzględnieniem AppConfig.");
                     }
                 } catch (Exception ex) {
                     statusLabel.setText("Błąd szukania trasy.");
@@ -311,9 +308,6 @@ public class RouteLineSearchMapTestApp extends JFrame {
         worker.execute();
     }
 
-    /**
-     * Rysuje wybraną trasę jako kolorową linię na mapie i generuje karta przesiadek.
-     */
     private void displaySelectedRoute(RouteOption option) {
         if (option == null) {
             polylinePainter.setLegs(null);
@@ -322,10 +316,8 @@ public class RouteLineSearchMapTestApp extends JFrame {
             return;
         }
 
-        // 1. Przekazanie odcinków linii do Paintera mapy
         polylinePainter.setLegs(option.getLegs());
 
-        // 2. Dopasowanie widoku mapy do rysowanej linii
         Set<GeoPosition> allPositions = new HashSet<>();
         for (RouteLeg leg : option.getLegs()) {
             allPositions.addAll(leg.pathPoints());
@@ -334,7 +326,6 @@ public class RouteLineSearchMapTestApp extends JFrame {
             mapViewer.zoomToBestFit(allPositions, 0.7);
         }
 
-        // 3. Generowanie opisu przesiadek i numerów linii
         StringBuilder html = new StringBuilder();
         html.append("<html><body style='font-family:sans-serif; font-size:11px; margin:6px;'>");
         html.append("<h3 style='margin:0 0 6px 0; color:#0055aa;'>").append(option.getTitle()).append("</h3>");
@@ -365,16 +356,12 @@ public class RouteLineSearchMapTestApp extends JFrame {
         mapViewer.repaint();
     }
 
-    /**
-     * Wyszukiwarka tras z podziałem na linie i przesiadki.
-     */
     private List<RouteOption> buildRouteOptionsWithTransfers(GeoPoint start, GeoPoint end) {
         List<RouteOption> options = new ArrayList<>();
 
         double midLat = (start.lat() + end.lat()) / 2.0;
         double midLon = (start.lon() + end.lon()) / 2.0;
 
-        // --- WARIANT 1: Autobus 507 -> Tramwaj 17 (1 Przesiadka) ---
         List<GeoPosition> leg1Points = List.of(
                 new GeoPosition(start.lat(), start.lon()),
                 new GeoPosition(start.lat() + (midLat - start.lat()) * 0.5, start.lon() + (midLon - start.lon()) * 0.3),
@@ -397,7 +384,6 @@ public class RouteLineSearchMapTestApp extends JFrame {
 
         options.add(new RouteOption("🚌 507 ➔ 🚊 17", 26, 1, List.of(leg1, legWalk, leg2)));
 
-        // --- WARIANT 2: Bezpośredni Autobus 522 (Bez przesiadek) ---
         List<GeoPosition> directPoints = List.of(
                 new GeoPosition(start.lat(), start.lon()),
                 new GeoPosition(start.lat() + (end.lat() - start.lat()) * 0.3, start.lon() + (end.lon() - start.lon()) * 0.2),
@@ -407,7 +393,6 @@ public class RouteLineSearchMapTestApp extends JFrame {
         RouteLeg directLeg = new RouteLeg(TransportType.BUS, "522", start.name(), end.name(), directPoints, new Color(153, 0, 153));
         options.add(new RouteOption("🚌 522 (Bezpośredni)", 32, 0, List.of(directLeg)));
 
-        // --- WARIANT 3: Metro M2 -> Autobus 116 ---
         List<GeoPosition> m2Points = List.of(
                 new GeoPosition(start.lat(), start.lon()),
                 new GeoPosition(start.lat() + 0.002, start.lon() + 0.004),

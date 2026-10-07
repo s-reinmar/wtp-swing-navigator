@@ -1,23 +1,23 @@
 package pl.j.reinmar.mapwaw.wtp.test;
 
+import pl.j.reinmar.mapwaw.wtp.config.AppConfig;
+
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class ZtmTestApp extends JFrame {
 
-    private static final String API_ENDPOINT = "https://api.um.warszawa.pl/api/action/busestrams_get/";
-    private static final String RESOURCE_ID = "f237384b-0105-44ee-9a2e-cad0334866b5";
+    // Pobieranie parametrów konfiguracyjnych z AppConfig (config.properties)
+    private static final String API_ENDPOINT = AppConfig.getApiEndpoint();
+    private static final String RESOURCE_ID = AppConfig.getResourceId();
 
     private JTextField apiKeyField;
     private JComboBox<String> typeComboBox;
@@ -38,7 +38,7 @@ public class ZtmTestApp extends JFrame {
                 .build();
 
         initUI();
-        loadApiKeyFromFile();
+        loadApiKeyFromConfig();
     }
 
     private void initUI() {
@@ -49,7 +49,7 @@ public class ZtmTestApp extends JFrame {
 
         // --- Panel górny: Parametry zapytania ---
         JPanel topPanel = new JPanel(new GridBagLayout());
-        topPanel.setBorder(BorderFactory.createTitledBorder("Parametry Zapytania API ZTM"));
+        topPanel.setBorder(BorderFactory.createTitledBorder("Parametry Zapytania API ZTM (z config.properties)"));
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(5, 5, 5, 5);
         gbc.fill = GridBagConstraints.HORIZONTAL;
@@ -116,18 +116,15 @@ public class ZtmTestApp extends JFrame {
     }
 
     /**
-     * Wczytuje klucz API z pliku apiKey.txt znajdującego się w katalogu roboczym.
+     * Wczytuje klucz API za pomocą klasy AppConfig (która sprawdza config.properties oraz apiKey.txt).
      */
-    private void loadApiKeyFromFile() {
-        Path keyPath = Path.of("apiKey.txt");
-        if (Files.exists(keyPath)) {
-            try {
-                String key = Files.readString(keyPath).trim();
-                apiKeyField.setText(key);
-                statusLabel.setText("Wczytano klucz API z pliku apiKey.txt");
-            } catch (IOException e) {
-                System.err.println("Nie udało się odczytać apiKey.txt: " + e.getMessage());
-            }
+    private void loadApiKeyFromConfig() {
+        String key = AppConfig.getApiKey();
+        if (key != null && !key.isBlank()) {
+            apiKeyField.setText(key);
+            statusLabel.setText("Wczytano klucz API z konfiguracji (AppConfig)");
+        } else {
+            statusLabel.setText("Brak klucza API w konfiguracji. Wprowadź go ręcznie.");
         }
     }
 
@@ -144,7 +141,7 @@ public class ZtmTestApp extends JFrame {
         int type = typeComboBox.getSelectedIndex() == 0 ? 1 : 2;
         String line = lineField.getText().trim();
 
-        // Budowanie adresu URL zapytania
+        // Budowanie adresu URL zapytania przy użyciu parametrów z AppConfig
         StringBuilder urlBuilder = new StringBuilder(API_ENDPOINT);
         urlBuilder.append("?apikey=").append(apiKey);
         urlBuilder.append("&resource_id=").append(RESOURCE_ID);
@@ -196,7 +193,7 @@ public class ZtmTestApp extends JFrame {
     }
 
     /**
-     * Szybkie parsowanie wartości JSON wyrażeniami regularnymi (bez zewnętrznych bibliotek).
+     * Szybkie parsowanie wartości JSON wyrażeniami regularnymi.
      */
     private void parseAndDisplayJson(String json) {
         if (json.contains("\"result\":\"") || !json.contains("\"result\":[")) {
@@ -237,7 +234,6 @@ public class ZtmTestApp extends JFrame {
     }
 
     public static void main(String[] args) {
-        // Ustawienie systemowego wyglądu (Look and Feel)
         SwingUtilities.invokeLater(() -> {
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
