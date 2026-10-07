@@ -25,7 +25,7 @@ public class DepartureTableModel extends AbstractTableModel {
     };
 
     /**
-     * Rekord reprezentujący pojedynczy wiersz odjazdu w tabeli.
+     * Rekord reprezentujący pojedynczy, gotowy do wyświetlenia wiersz odjazdu w tabeli.
      */
     public record DepartureRow(
             String line,
@@ -35,6 +35,7 @@ public class DepartureTableModel extends AbstractTableModel {
             String delay
     ) {}
 
+    // Wewnętrzna lista przechowująca aktualne wiersze tabeli
     private final List<DepartureRow> departures;
 
     /**
@@ -104,7 +105,9 @@ public class DepartureTableModel extends AbstractTableModel {
     }
 
     /**
-     * Podmienia całą zawartość tabeli i powiadamia JTable o zmianie.
+     * Główna metoda zasilająca tabelę nowymi danymi.
+     * Zastępuje całą dotychczasową zawartość i bezpiecznie powiadamia UI (Swing EDT) o zmianach.
+     * Ta metoda naprawia błędy z brakiem "setRowCount" i "addRow".
      */
     public void setDepartures(List<DepartureRow> newDepartures) {
         SwingUtilities.invokeLater(() -> {
@@ -118,19 +121,7 @@ public class DepartureTableModel extends AbstractTableModel {
     }
 
     /**
-     * Dodaje pojedynczy wiersz odjazdu do tabeli.
-     */
-    public void addDeparture(DepartureRow departure) {
-        if (departure == null) return;
-        SwingUtilities.invokeLater(() -> {
-            int newRowIndex = departures.size();
-            departures.add(departure);
-            fireTableRowsInserted(newRowIndex, newRowIndex);
-        });
-    }
-
-    /**
-     * Czyści wszystkie wiersze z tabeli.
+     * Czyści wszystkie wiersze z tabeli, powiadamiając widok o usunięciu elementów.
      */
     public void clear() {
         SwingUtilities.invokeLater(() -> {

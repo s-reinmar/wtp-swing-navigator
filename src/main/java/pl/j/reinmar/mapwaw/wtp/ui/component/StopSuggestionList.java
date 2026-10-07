@@ -38,7 +38,7 @@ public class StopSuggestionList extends JList<Stop> {
                                                           boolean isSelected, boolean cellHasFocus) {
                 JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
                 if (value instanceof Stop stop) {
-                    label.setText("🏏 " + stop.name() + " (" + stop.code() + ") [" + stop.id() + "]");
+                    label.setText("🏏 " + stop.getName() + " (" + stop.getCode() + ") [" + stop.getId() + "]");
                     label.setBorder(BorderFactory.createEmptyBorder(3, 6, 3, 6));
                 }
                 return label;
