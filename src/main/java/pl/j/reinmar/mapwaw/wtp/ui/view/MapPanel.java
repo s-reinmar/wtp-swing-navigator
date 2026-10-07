@@ -18,6 +18,8 @@ import pl.j.reinmar.mapwaw.wtp.repository.RealtimeVehicleCache;
 import javax.swing.*;
 import javax.swing.event.MouseInputListener;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
@@ -31,8 +33,7 @@ import java.util.function.Consumer;
 
 /**
  * Komponent interfejsu Swing/AWT reprezentujący kontener mapy OpenStreetMap.
- * Odpowiada za obsługę zdarzeń interaktywnych, w tym dynamiczne wyświetlanie okna
- * podręcznego (Tooltip) ze szczegółami pojazdu po najechaniu myszą.
+ * Zapewnia poprawne zachowanie silnika mapy JXMapViewer2 podczas zmiany rozmiaru okna (Window Resize).
  */
 public class MapPanel extends JPanel {
 
@@ -42,7 +43,7 @@ public class MapPanel extends JPanel {
     private static final double WARSAW_CENTER_LON = 21.012234;
     private static final int DEFAULT_ZOOM_LEVEL = 5;
     private static final double CLICK_RADIUS_PIXELS = 15.0;
-    private static final double VEHICLE_HOVER_RADIUS_PIXELS = 12.0; // Promień wykrywania najechania myszą na pojazd
+    private static final double VEHICLE_HOVER_RADIUS_PIXELS = 12.0;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss")
             .withZone(ZoneId.systemDefault());
@@ -55,17 +56,16 @@ public class MapPanel extends JPanel {
     private Consumer<Waypoint> onStopSelectedListener;
 
     /**
-     * Domyślny konstruktor inicjalizujący silnik mapy JXMapViewer2 oraz interakcję Tooltipa.
+     * Domyślny konstruktor inicjalizujący silnik mapy JXMapViewer2 oraz obsługę zmiany rozmiaru okna.
      */
     public MapPanel() {
-        logger.info("Inicjalizacja komponentu MapPanel wraz z obsługą okna podręcznego (Tooltip)...");
+        logger.info("Inicjalizacja komponentu MapPanel z obsługą optymalizacji zmiany rozmiaru okna...");
         setLayout(new BorderLayout());
 
         System.setProperty("http.agent", "WtpSwingNavigator/1.0 (pl.j.reinmar.mapwaw.wtp)");
 
         this.mapViewer = new JXMapViewer();
 
-        // Skonfigurowanie czułości i opóźnienia pojawiania się Tooltipa w Swing ToolTipManager
         ToolTipManager.sharedInstance().setInitialDelay(200);
         ToolTipManager.sharedInstance().setDismissDelay(8000);
 
@@ -80,9 +80,10 @@ public class MapPanel extends JPanel {
 
         setupMouseNavigation();
         setupStopSelectionMouseListener();
-
-        // KROK 62: Podpięcie słuchacza ruchu myszy do dynamicznego Tooltipa dla pojazdów
         setupVehicleTooltipMouseListener();
+
+        // KROK 64: Zapewnienie poprawnego zachowania mapy przy zmianie rozmiaru okna programu
+        setupResizeListener();
 
         this.waypointPainter = new WaypointPainter<>();
         this.waypointPainter.setRenderer(new StopWaypointRenderer());
@@ -91,14 +92,37 @@ public class MapPanel extends JPanel {
 
         add(mapViewer, BorderLayout.CENTER);
 
-        logger.info("Mechanizm Tooltip pojazdów został pomyślnie skonfigurowany.");
+        logger.info("Mechanizm dynamicznej adaptacji układu mapy przy skalowaniu okna został skonfigurowany.");
     }
 
     /**
-     * Rejestruje repozytorium/cache pozycji pojazdów do potrzeb wyliczania Tooltipa.
-     *
-     * @param vehicleCache instancja RealtimeVehicleCache
+     * KROK 64: Rejestruje słuchacza zdarzenia skalingu/zmiany rozmiaru komponentu (ComponentListener).
+     * Zachowuje środek geograficzny mapy i wymusza ponowne przeliczenie widoku w wątku Swing EDT.
      */
+    private void setupResizeListener() {
+        this.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                if (mapViewer == null) {
+                    return;
+                }
+
+                // Pobranie bieżącego środka geograficznego przed przeliczeniem układy
+                GeoPosition currentCenter = mapViewer.getAddressLocation();
+
+                // Odświeżenie geometrii i przeliczenie granicy widoku (Viewport)
+                mapViewer.revalidate();
+
+                if (currentCenter != null) {
+                    mapViewer.setAddressLocation(currentCenter);
+                }
+
+                mapViewer.repaint();
+                logger.trace("Dopasowano geometrię MapPanel po zmianie rozmiaru okna. Wymiary: {}x{}", getWidth(), getHeight());
+            }
+        });
+    }
+
     public void setVehicleCache(RealtimeVehicleCache vehicleCache) {
         this.vehicleCache = vehicleCache;
     }
@@ -136,9 +160,6 @@ public class MapPanel extends JPanel {
         });
     }
 
-    /**
-     * KROK 62: Rejestruje nasłuchiwanie ruchu myszy i wyznacza pojazd znajdujący się pod kursorem.
-     */
     private void setupVehicleTooltipMouseListener() {
         this.mapViewer.addMouseMotionListener(new MouseMotionAdapter() {
             @Override
@@ -160,9 +181,6 @@ public class MapPanel extends JPanel {
         });
     }
 
-    /**
-     * Odnajduje pojazd w pamięci cache, którego ikona leży w sąsiedztwie kursora myszy.
-     */
     private LiveVehiclePosition findVehicleAtPoint(Point mousePoint) {
         if (vehicleCache == null) return null;
 
@@ -192,9 +210,6 @@ public class MapPanel extends JPanel {
         return nearest;
     }
 
-    /**
-     * KROK 62: Buduje strukturę dokumentu HTML prezentującą kartę szczegółów pojazdu.
-     */
     private String buildVehicleTooltipHtml(LiveVehiclePosition v) {
         boolean isTram = isTramLine(v.getLineNumber());
         String vehicleType = isTram ? "Tramwaj" : "Autobus";
