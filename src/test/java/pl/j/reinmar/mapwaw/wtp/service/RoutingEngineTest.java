@@ -14,6 +14,43 @@ import static org.junit.jupiter.api.Assertions.*;
 class RoutingEngineTest {
 
     @Test
+    @DisplayName("Znajduje wszystkie bezpośrednie warianty i zachowuje przystanki po drodze")
+    void findsDirectRoutesInVariantOrder() {
+        Stop origin = stop("A");
+        Stop intermediate = stop("B");
+        Stop destination = stop("C");
+        RoutingEngine engine = new RoutingEngine(List.of(
+                variant("second", "9", "Centrum", origin, destination),
+                variant("first", "17", "Dworzec", origin, intermediate, destination),
+                variant("reverse", "1", "Początek", destination, origin),
+                variant("transfer-only-a", "2", "Cel", origin, intermediate),
+                variant("transfer-only-b", "3", "Cel", intermediate, destination)
+        ));
+
+        List<RoutingEngine.RouteLeg> routes = engine.findDirectRoutes(origin, destination);
+
+        assertEquals(2, routes.size());
+        assertEquals(List.of("17", "9"), routes.stream()
+                .map(RoutingEngine.RouteLeg::lineNumber)
+                .toList());
+        assertEquals(List.of("A", "B", "C"), stopIds(routes.getFirst().stops()));
+        assertEquals("Dworzec", routes.getFirst().directionName());
+    }
+
+    @Test
+    @DisplayName("Nie zwraca bezpośredniej trasy dla nieprawidłowych lub identycznych przystanków")
+    void returnsNoDirectRoutesForInvalidOrSameStops() {
+        RoutingEngine engine = new RoutingEngine(List.of(
+                variant("line", "1", "Cel", stop("A"), stop("B"))
+        ));
+
+        assertTrue(engine.findDirectRoutes(null, stop("B")).isEmpty());
+        assertTrue(engine.findDirectRoutes(stop(" "), stop("B")).isEmpty());
+        assertTrue(engine.findDirectRoutes(stop("A"), stop("A")).isEmpty());
+        assertTrue(engine.findDirectRoutes(stop("B"), stop("A")).isEmpty());
+    }
+
+    @Test
     @DisplayName("Wybiera trasę bez przesiadek przed krótszą trasą wymagającą przesiadki")
     void prefersFewerTransfersBeforeFewerStops() {
         Stop start = stop("A");

@@ -36,6 +36,53 @@ public class RoutingEngine {
     }
 
     /**
+     * Zwraca wszystkie warianty umożliwiające przejazd z przystanku początkowego
+     * do końcowego bez przesiadki. Kolejność przystanków wariantu jest zachowana.
+     */
+    public List<RouteLeg> findDirectRoutes(Stop origin, Stop destination) {
+        if (!hasStopId(origin) || !hasStopId(destination)
+                || origin.getId().equals(destination.getId())) {
+            return List.of();
+        }
+
+        List<RouteLeg> directRoutes = new ArrayList<>();
+        for (RouteVariant variant : routeVariants) {
+            if (variant == null || variant.getLineNumber() == null
+                    || variant.getLineNumber().isBlank() || variant.getRouteStops() == null) {
+                continue;
+            }
+
+            List<RouteStop> routeStops = variant.getRouteStops().stream()
+                    .filter(routeStop -> routeStop != null && hasStopId(routeStop.getStop()))
+                    .sorted(Comparator.comparingInt(RouteStop::getSequenceOrder))
+                    .toList();
+            int originIndex = -1;
+            int destinationIndex = -1;
+            for (int i = 0; i < routeStops.size(); i++) {
+                String stopId = routeStops.get(i).getStop().getId();
+                if (originIndex < 0 && origin.getId().equals(stopId)) {
+                    originIndex = i;
+                } else if (originIndex >= 0 && destination.getId().equals(stopId)) {
+                    destinationIndex = i;
+                    break;
+                }
+            }
+
+            if (destinationIndex > originIndex && originIndex >= 0) {
+                List<Stop> stops = routeStops.subList(originIndex, destinationIndex + 1).stream()
+                        .map(RouteStop::getStop)
+                        .toList();
+                directRoutes.add(new RouteLeg(variant.getLineNumber(),
+                        variant.getDirectionName(), stops));
+            }
+        }
+
+        directRoutes.sort(Comparator.comparing(RouteLeg::lineNumber)
+                .thenComparing(leg -> leg.directionName() == null ? "" : leg.directionName()));
+        return List.copyOf(directRoutes);
+    }
+
+    /**
      * Finds the best route. Stops are matched by their GTFS stop ID, not object identity.
      *
      * @return an empty result when either stop is invalid or no directed route connects them
