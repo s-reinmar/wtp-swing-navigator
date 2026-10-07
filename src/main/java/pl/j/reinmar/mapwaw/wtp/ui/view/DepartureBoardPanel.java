@@ -2,17 +2,16 @@ package pl.j.reinmar.mapwaw.wtp.ui.view;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pl.j.reinmar.mapwaw.wtp.ui.component.DepartureTableCellRenderer;
 import pl.j.reinmar.mapwaw.wtp.ui.component.DepartureTableModel;
 
 import javax.swing.*;
-import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableColumnModel;
 import java.awt.*;
 
 /**
  * Panel boczny prezentujący tablicę odjazdów z przystanku.
- * Zawiera skonfigurowaną tabelę JTable z kolumnami:
- * Linia, Kierunek, Czas rozkładowy, Estymowany czas (GPS) oraz Opóźnienie.
+ * Zawiera nagłówek oraz tabelę JTable skonfigurowaną z customowym model i rendererem komórek.
  */
 public class DepartureBoardPanel extends JPanel {
 
@@ -26,18 +25,18 @@ public class DepartureBoardPanel extends JPanel {
      * Konstruktor tworzący panel tablicy odjazdów.
      */
     public DepartureBoardPanel() {
-        logger.info("Inicjalizacja DepartureBoardPanel z konfiguracją kolumn odjazdów...");
+        logger.info("Inicjalizacja DepartureBoardPanel z wyznaczoną konfiguracją kolumn i rendererem...");
         initUI();
     }
 
     /**
-     * Inicjalizuje układ, komponenty Swing oraz ustala szerokości i wyrównania kolumn JTable.
+     * Inicjalizuje układ, komponenty Swing oraz nakłada customowy renderer komórek dla opóźnień.
      */
     private void initUI() {
         setLayout(new BorderLayout(8, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // 1. NAGŁÓWEK TABLICY ODJAZDÓW[cite: 2, 6]
+        // 1. NAGŁÓWEK TABLICY ODJAZDÓW
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 0, 2, 0, new Color(0, 102, 204)),
@@ -62,49 +61,34 @@ public class DepartureBoardPanel extends JPanel {
         departureTable.getTableHeader().setReorderingAllowed(false);
         departureTable.setAutoCreateRowSorter(true);
 
-        // Konfiguracja kolumn JTable
+        // Konfiguracja kolumn JTable oraz przypisanie customowego renderera
         setupTableColumns();
 
         JScrollPane scrollPane = new JScrollPane(departureTable);
         add(scrollPane, BorderLayout.CENTER);
 
-        logger.info("Skonfigurowano kolumny JTable: Linia, Kierunek, Czas rozkładowy, Estymowany czas (GPS), Opóźnienie.");
+        logger.info("Panel DepartureBoardPanel został pomyślnie skonfigurowany.");
     }
 
     /**
-     * Konfiguruje preferowane szerokości oraz wyrównania tekstu w kolumnach tabeli odjazdów.
+     * Konfiguruje preferowane szerokości kolumn oraz nakłada customowy renderer komórek.
      */
     private void setupTableColumns() {
         TableColumnModel columnModel = departureTable.getColumnModel();
 
-        // Renderer wyśrodkowujący tekst
-        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
-        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
-
-        // Renderer do lewej (dla kierunku)
-        DefaultTableCellRenderer leftRenderer = new DefaultTableCellRenderer();
-        leftRenderer.setHorizontalAlignment(SwingConstants.LEFT);
-
-        // Kolumna 0: Linia (np. "507", "17")
-        columnModel.getColumn(0).setPreferredWidth(60);
+        // 1. Przypisanie wymiarów kolumn
+        columnModel.getColumn(0).setPreferredWidth(60);  // Linia
         columnModel.getColumn(0).setMaxWidth(80);
-        columnModel.getColumn(0).setCellRenderer(centerRenderer);
+        columnModel.getColumn(1).setPreferredWidth(160); // Kierunek
+        columnModel.getColumn(2).setPreferredWidth(110); // Czas rozkładowy
+        columnModel.getColumn(3).setPreferredWidth(130); // Estymowany czas (GPS)
+        columnModel.getColumn(4).setPreferredWidth(90);  // Opóźnienie
 
-        // Kolumna 1: Kierunek (np. "Gocław")
-        columnModel.getColumn(1).setPreferredWidth(160);
-        columnModel.getColumn(1).setCellRenderer(leftRenderer);
-
-        // Kolumna 2: Czas rozkładowy (np. "14:25")
-        columnModel.getColumn(2).setPreferredWidth(110);
-        columnModel.getColumn(2).setCellRenderer(centerRenderer);
-
-        // Kolumna 3: Estymowany czas (GPS) (np. "14:28")
-        columnModel.getColumn(3).setPreferredWidth(130);
-        columnModel.getColumn(3).setCellRenderer(centerRenderer);
-
-        // Kolumna 4: Opóźnienie (np. "+3 min")
-        columnModel.getColumn(4).setPreferredWidth(90);
-        columnModel.getColumn(4).setCellRenderer(centerRenderer);
+        // 2. Zastosowanie customowego renderera kolorującego opóźnienia
+        DepartureTableCellRenderer cellRenderer = new DepartureTableCellRenderer();
+        for (int i = 0; i < departureTable.getColumnCount(); i++) {
+            departureTable.getColumnModel().getColumn(i).setCellRenderer(cellRenderer);
+        }
     }
 
     /**
