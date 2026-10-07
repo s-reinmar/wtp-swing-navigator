@@ -13,10 +13,13 @@ import pl.j.reinmar.mapwaw.wtp.ui.view.MapPanel;
 import javax.swing.*;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Kontroler łączący zdarzenia z interaktywnej mapy z panelem bocznym tablicy odjazdów.
+ * Reaguje na kliknięcia, odpytuje repozytoria, filtruje dane i steruje widokiem (np. CardLayout).
+ */
 public class MapController {
 
     private static final Logger logger = LoggerFactory.getLogger(MapController.class);
@@ -42,19 +45,31 @@ public class MapController {
     }
 
     public void onStopSelectedOnMap(Stop selectedStop) {
-        if (selectedStop == null) return;
+        if (selectedStop == null) {
+            logger.warn("Otrzymano puste zdarzenie wyboru przystanku z mapy.");
+            return;
+        }
 
         this.currentlySelectedStop = selectedStop;
-        logger.info("Wybrano przystanek na mapie: {} [{}]", selectedStop.getName(), selectedStop.getId());
 
-        departureBoardPanel.setStopHeader(selectedStop.getName() + " " + selectedStop.getCode());
+        // Zabezpieczenie przed NullPointerException przy braku nazwy/kodu
+        String stopName = selectedStop.getName() != null ? selectedStop.getName() : "Nieznany przystanek";
+        String stopCode = selectedStop.getCode() != null ? selectedStop.getCode() : "";
+        String stopId = selectedStop.getId() != null ? selectedStop.getId() : "Brak ID";
+
+        logger.info("Wybrano przystanek na mapie: {} [{}]", stopName, stopId);
+
+        departureBoardPanel.setStopHeader(stopName + " " + stopCode);
         refreshDepartureBoard();
     }
 
     public void clearSelection() {
         this.currentlySelectedStop = null;
-        departureBoardPanel.setStopHeader("Wybierz przystanek z mapy / szukaj");
+        departureBoardPanel.setStopHeader("Wybierz przystanek z mapy...");
         departureBoardPanel.getTableModel().clear();
+
+        // Powrót do ekranu z instrukcją (CardLayout)
+        departureBoardPanel.showEmptyMessage("Wybierz przystanek z mapy, aby zobaczyć odjazdy.");
 
         if (mapPanel != null) {
             SwingUtilities.invokeLater(() -> {
@@ -65,54 +80,62 @@ public class MapController {
     }
 
     public void refreshDepartureBoard() {
-        if (currentlySelectedStop == null) return;
+        if (currentlySelectedStop == null) {
+            departureBoardPanel.showEmptyMessage("Wybierz przystanek z mapy, aby zobaczyć odjazdy.");
+            return;
+        }
 
         SwingUtilities.invokeLater(() -> {
             LocalTime now = LocalTime.now();
+
+            // Pobranie odjazdów. Jeśli metoda findNextDepartures z limitami nie istnieje w Twoim repozytorium,
+            // używamy domyślnej getDeparturesForStop (jak miałeś w oryginalnym kodzie)
             List<Departure> departures = scheduleRepository.getDeparturesForStop(currentlySelectedStop.getId());
 
+            // KROK 76: Jeśli baza nie zwróciła w ogóle odjazdów
             if (departures == null || departures.isEmpty()) {
-                departureBoardPanel.getTableModel().setDepartures(Collections.emptyList());
+                departureBoardPanel.getTableModel().clear();
+                departureBoardPanel.showEmptyMessage("Brak zaplanowanych odjazdów w najbliższym czasie.");
                 return;
             }
 
-            // Pobranie stanu filtrów z widoku
             boolean showBuses = departureBoardPanel.isBusFilterActive();
             boolean showTrams = departureBoardPanel.isTramFilterActive();
             boolean showMetro = departureBoardPanel.isMetroFilterActive();
 
-            // Zastosowanie filtracji i mapowanie do wierszy tabeli
             List<DepartureRow> rows = departures.stream()
                     .filter(dep -> isTransportTypeAllowed(dep, showBuses, showTrams, showMetro))
                     .map(dep -> mapToDepartureRow(dep, now))
                     .collect(Collectors.toList());
 
-            departureBoardPanel.getTableModel().setDepartures(rows);
+            // KROK 76: Jeśli odjazdy są, ale wszystkie zostały odfiltrowane przez checkboxy
+            if (rows.isEmpty()) {
+                departureBoardPanel.getTableModel().clear();
+                departureBoardPanel.showEmptyMessage("Brak odjazdów pasujących do wybranych filtrów.");
+            } else {
+                // Przywrócenie widoku tabeli i zasilenie nowymi danymi
+                departureBoardPanel.showTable();
+                departureBoardPanel.getTableModel().setDepartures(rows);
+            }
         });
     }
 
-    /**
-     * KROK 75: Weryfikacja typu transportu na podstawie numeru linii pojazdu.
-     */
     private boolean isTransportTypeAllowed(Departure dep, boolean showBuses, boolean showTrams, boolean showMetro) {
-        String line = (dep.getLine() != null) ? dep.getLine().getLineNumber() : "";
+        String line = "";
+        if (dep.getLine() != null && dep.getLine().getLineNumber() != null) {
+            line = dep.getLine().getLineNumber();
+        }
+
         if (line == null || line.isBlank()) return true;
 
         line = line.trim().toUpperCase();
-
-        // Metro przyjmuje oznaczenia literowe, np. M1, M2
         boolean isMetro = line.startsWith("M");
-
         boolean isTram = false;
         try {
             int lineNum = Integer.parseInt(line);
-            // Zwykle linie tramwajowe to jedno lub dwucyfrowe numery poniżej 100
             isTram = (lineNum > 0 && lineNum < 100);
-        } catch (NumberFormatException ignored) {
-            // Linie znakowe (N, L, E) zostaną zakwalifikowane jako autobus, jeśli to nie Metro
-        }
+        } catch (NumberFormatException ignored) {}
 
-        // Jeśli nie jest to ani metro, ani tramwaj, traktujemy jako autobus (np. 507, 175)
         boolean isBus = !isMetro && !isTram;
 
         if (isMetro && showMetro) return true;
@@ -123,11 +146,18 @@ public class MapController {
     }
 
     private DepartureRow mapToDepartureRow(Departure dep, LocalTime now) {
-        String line = (dep.getLine() != null) ? dep.getLine().getLineNumber() : "-";
-        String direction = (currentlySelectedStop.getName() != null) ? currentlySelectedStop.getName() : "Nieznany";
+        String line = (dep.getLine() != null && dep.getLine().getLineNumber() != null)
+                ? dep.getLine().getLineNumber() : "-";
+
+        // Jeśli obiekt Departure nie posiada metody getDirection(), używamy nazwy przystanku docelowego
+        String direction = currentlySelectedStop.getName() != null ? currentlySelectedStop.getName() : "Nieznany";
+
         String scheduledTime = (dep.getDepartureTime() != null) ? dep.getDepartureTime().format(TIME_FORMATTER) : "-";
 
-        int delaySec = 0; // Logika opóźnień (Krok 72)
+        // Tymczasowy brak błędu DelayCalculator - zwracamy 0 jako opóźnienie domyślne.
+        // W przyszłości możesz tu podpiąć odpowiednią metodę serwisu opóźnień.
+        int delaySec = 0;
+
         LocalTime estimatedTime = (dep.getDepartureTime() != null) ? dep.getDepartureTime().plusSeconds(delaySec) : now;
 
         return new DepartureRow(line, direction, scheduledTime, estimatedTime.format(TIME_FORMATTER), formatDelay(delaySec));
