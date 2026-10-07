@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pl.j.reinmar.mapwaw.wtp.ui.component.DepartureTableCellRenderer;
 import pl.j.reinmar.mapwaw.wtp.ui.component.DepartureTableModel;
+import pl.j.reinmar.mapwaw.wtp.ui.controller.MapController;
 
 import javax.swing.*;
 import javax.swing.table.TableColumnModel;
@@ -11,7 +12,7 @@ import java.awt.*;
 
 /**
  * Panel boczny prezentujący tablicę odjazdów z przystanku.
- * Zawiera nagłówek oraz tabelę JTable skonfigurowaną z customowym model i rendererem komórek.
+ * Zawiera nagłówek, przycisk czyszczenia oraz tabelę JTable skonfigurowaną z customowym modelem.
  */
 public class DepartureBoardPanel extends JPanel {
 
@@ -20,23 +21,25 @@ public class DepartureBoardPanel extends JPanel {
     private JLabel stopHeaderLabel;
     private JTable departureTable;
     private DepartureTableModel tableModel;
+    private JButton clearButton;
+    private MapController mapController; // Referencja do kontrolera obsługującego akcję czyszczenia
 
     /**
      * Konstruktor tworzący panel tablicy odjazdów.
      */
     public DepartureBoardPanel() {
-        logger.info("Inicjalizacja DepartureBoardPanel z wyznaczoną konfiguracją kolumn i rendererem...");
+        logger.info("Inicjalizacja DepartureBoardPanel...");
         initUI();
     }
 
     /**
-     * Inicjalizuje układ, komponenty Swing oraz nakłada customowy renderer komórek dla opóźnień.
+     * Inicjalizuje układ, komponenty Swing oraz nakłada customowy renderer komórek.
      */
     private void initUI() {
         setLayout(new BorderLayout(8, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // 1. NAGŁÓWEK TABLICY ODJAZDÓW
+        // 1. NAGŁÓWEK TABLICY ODJAZDÓW I PRZYCISK CZYSZCZENIA
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 0, 2, 0, new Color(0, 102, 204)),
@@ -48,9 +51,21 @@ public class DepartureBoardPanel extends JPanel {
         stopHeaderLabel.setForeground(new Color(0, 51, 102));
         headerPanel.add(stopHeaderLabel, BorderLayout.CENTER);
 
+        // KROK 74: Przycisk czyszczenia zaznaczenia i powrotu
+        clearButton = new JButton("Wyczyść / Powrót");
+        clearButton.setFocusable(false);
+        clearButton.addActionListener(e -> {
+            if (mapController != null) {
+                mapController.clearSelection();
+            } else {
+                logger.warn("Przycisk czyszczenia kliknięty, ale MapController nie jest podpięty do DepartureBoardPanel.");
+            }
+        });
+        headerPanel.add(clearButton, BorderLayout.EAST);
+
         add(headerPanel, BorderLayout.NORTH);
 
-        // 2. MODEL I TABELA ODJAZDÓW (JTable)[cite: 2, 6]
+        // 2. MODEL I TABELA ODJAZDÓW (JTable)
         tableModel = new DepartureTableModel();
         departureTable = new JTable(tableModel);
 
@@ -61,7 +76,6 @@ public class DepartureBoardPanel extends JPanel {
         departureTable.getTableHeader().setReorderingAllowed(false);
         departureTable.setAutoCreateRowSorter(true);
 
-        // Konfiguracja kolumn JTable oraz przypisanie customowego renderera
         setupTableColumns();
 
         JScrollPane scrollPane = new JScrollPane(departureTable);
@@ -76,7 +90,6 @@ public class DepartureBoardPanel extends JPanel {
     private void setupTableColumns() {
         TableColumnModel columnModel = departureTable.getColumnModel();
 
-        // 1. Przypisanie wymiarów kolumn
         columnModel.getColumn(0).setPreferredWidth(60);  // Linia
         columnModel.getColumn(0).setMaxWidth(80);
         columnModel.getColumn(1).setPreferredWidth(160); // Kierunek
@@ -84,7 +97,6 @@ public class DepartureBoardPanel extends JPanel {
         columnModel.getColumn(3).setPreferredWidth(130); // Estymowany czas (GPS)
         columnModel.getColumn(4).setPreferredWidth(90);  // Opóźnienie
 
-        // 2. Zastosowanie customowego renderera kolorującego opóźnienia
         DepartureTableCellRenderer cellRenderer = new DepartureTableCellRenderer();
         for (int i = 0; i < departureTable.getColumnCount(); i++) {
             departureTable.getColumnModel().getColumn(i).setCellRenderer(cellRenderer);
@@ -93,8 +105,6 @@ public class DepartureBoardPanel extends JPanel {
 
     /**
      * Ustawia nagłówek z nazwą i kodem aktywnego przystanku.
-     *
-     * @param stopName nazwa zespołu i numer słupka (np. "Centrum 01")
      */
     public void setStopHeader(String stopName) {
         SwingUtilities.invokeLater(() -> {
@@ -107,15 +117,16 @@ public class DepartureBoardPanel extends JPanel {
     }
 
     /**
-     * Zwraca model tabeli odjazdów.
+     * Przypisuje instancję MapController do panelu, by obsłużyć akcję przycisku "Wyczyść".
      */
+    public void setMapController(MapController mapController) {
+        this.mapController = mapController;
+    }
+
     public DepartureTableModel getTableModel() {
         return tableModel;
     }
 
-    /**
-     * Zwraca komponent JTable.
-     */
     public JTable getDepartureTable() {
         return departureTable;
     }

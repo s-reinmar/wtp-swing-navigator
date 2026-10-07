@@ -8,6 +8,7 @@ import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
 import pl.j.reinmar.mapwaw.wtp.service.DelayCalculatorService;
 import pl.j.reinmar.mapwaw.wtp.ui.component.DepartureTableModel.DepartureRow;
 import pl.j.reinmar.mapwaw.wtp.ui.view.DepartureBoardPanel;
+import pl.j.reinmar.mapwaw.wtp.ui.view.MapPanel; // Importujemy widok mapy, aby móc ją odświeżać
 
 import javax.swing.*;
 import java.time.LocalTime;
@@ -16,9 +17,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * Kontroler łączący zdarzenia z interaktywnej mapy z panelem bocznym tablicy odjazdów.
- */
 public class MapController {
 
     private static final Logger logger = LoggerFactory.getLogger(MapController.class);
@@ -27,6 +25,7 @@ public class MapController {
     private final DepartureBoardPanel departureBoardPanel;
     private final ScheduleRepository scheduleRepository;
     private final DelayCalculatorService delayCalculatorService;
+    private MapPanel mapPanel; // Dodano opcjonalną referencję do MapPanel, by reagować na czyszczenie
 
     private Stop currentlySelectedStop;
 
@@ -36,6 +35,11 @@ public class MapController {
         this.departureBoardPanel = departureBoardPanel;
         this.scheduleRepository = scheduleRepository;
         this.delayCalculatorService = delayCalculatorService;
+    }
+
+    // Nowa metoda do opcjonalnego wpięcia odniesienia do mapy (wywoływana w MainFrame)
+    public void setMapPanel(MapPanel mapPanel) {
+        this.mapPanel = mapPanel;
     }
 
     public void onStopSelectedOnMap(Stop selectedStop) {
@@ -51,6 +55,32 @@ public class MapController {
         refreshDepartureBoard();
     }
 
+    /**
+     * Krok 74: Metoda wywoływana przyciskiem "Wyczyść" – wraca do widoku ogólnego.
+     */
+    public void clearSelection() {
+        logger.info("Wyczyszczono zaznaczenie przystanku. Powrót do widoku ogólnego.");
+
+        // 1. Zresetuj aktualnie wybrany przystanek
+        this.currentlySelectedStop = null;
+
+        // 2. Zresetuj nagłówek w UI
+        departureBoardPanel.setStopHeader("Wybierz przystanek z mapy...");
+
+        // 3. Wyczyść model tabeli (JTable)
+        departureBoardPanel.getTableModel().clear();
+
+        // 4. Jeśli wpięto MapPanel (Krok 61 i 72), wywołaj odświeżenie mapy
+        if (mapPanel != null) {
+            SwingUtilities.invokeLater(() -> {
+                // Ta metoda (clearRouteSelection lub clearSelectedStop) powinna znajdować się w MapPanel,
+                // np. na wzór clearRouteSelection() z notatnika OsmZtmTransferRouteMapApp.
+                mapPanel.clearSelectedStop();
+                mapPanel.repaint();
+            });
+        }
+    }
+
     public void refreshDepartureBoard() {
         if (currentlySelectedStop == null) return;
 
@@ -60,16 +90,13 @@ public class MapController {
 
             if (departures == null || departures.isEmpty()) {
                 departureBoardPanel.getTableModel().setDepartures(Collections.emptyList());
-                logger.info("Brak nadchodzących odjazdów dla przystanku: {}", currentlySelectedStop.getName());
                 return;
             }
 
-            // Czyste mapowanie obiektów domenowych na wiersze tabeli
             List<DepartureRow> rows = departures.stream()
                     .map(dep -> mapToDepartureRow(dep, now))
                     .collect(Collectors.toList());
 
-            // Przekazanie gotowej listy do modelu
             departureBoardPanel.getTableModel().setDepartures(rows);
         });
     }
@@ -79,7 +106,7 @@ public class MapController {
         String direction = (currentlySelectedStop.getName() != null) ? currentlySelectedStop.getName() : "Nieznany";
         String scheduledTime = (dep.getDepartureTime() != null) ? dep.getDepartureTime().format(TIME_FORMATTER) : "-";
 
-        int delaySec = 0; // Wartość domyślna skorygowana o LiveVehiclePosition z cache
+        int delaySec = 0;
         LocalTime estimatedTime = (dep.getDepartureTime() != null) ? dep.getDepartureTime().plusSeconds(delaySec) : now;
 
         return new DepartureRow(line, direction, scheduledTime, estimatedTime.format(TIME_FORMATTER), formatDelay(delaySec));

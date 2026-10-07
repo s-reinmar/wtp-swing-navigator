@@ -11,7 +11,6 @@ import org.jxmapviewer.viewer.Waypoint;
 import org.jxmapviewer.viewer.WaypointPainter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import pl.j.reinmar.mapwaw.wtp.model.LiveVehiclePosition;
 import pl.j.reinmar.mapwaw.wtp.repository.RealtimeVehicleCache;
 
@@ -33,7 +32,7 @@ import java.util.function.Consumer;
 
 /**
  * Komponent interfejsu Swing/AWT reprezentujący kontener mapy OpenStreetMap.
- * Zapewnia poprawne zachowanie silnika mapy JXMapViewer2 podczas zmiany rozmiaru okna (Window Resize).
+ * Zapewnia obsługę myszy, tooltipów dla pojazdów, wybór przystanków oraz czyszczenie zaznaczenia.
  */
 public class MapPanel extends JPanel {
 
@@ -55,11 +54,8 @@ public class MapPanel extends JPanel {
     private RealtimeVehicleCache vehicleCache;
     private Consumer<Waypoint> onStopSelectedListener;
 
-    /**
-     * Domyślny konstruktor inicjalizujący silnik mapy JXMapViewer2 oraz obsługę zmiany rozmiaru okna.
-     */
     public MapPanel() {
-        logger.info("Inicjalizacja komponentu MapPanel z obsługą optymalizacji zmiany rozmiaru okna...");
+        logger.info("Inicjalizacja komponentu MapPanel...");
         setLayout(new BorderLayout());
 
         System.setProperty("http.agent", "WtpSwingNavigator/1.0 (pl.j.reinmar.mapwaw.wtp)");
@@ -81,8 +77,6 @@ public class MapPanel extends JPanel {
         setupMouseNavigation();
         setupStopSelectionMouseListener();
         setupVehicleTooltipMouseListener();
-
-        // KROK 64: Zapewnienie poprawnego zachowania mapy przy zmianie rozmiaru okna programu
         setupResizeListener();
 
         this.waypointPainter = new WaypointPainter<>();
@@ -91,34 +85,19 @@ public class MapPanel extends JPanel {
         this.mapViewer.setOverlayPainter(this.waypointPainter);
 
         add(mapViewer, BorderLayout.CENTER);
-
-        logger.info("Mechanizm dynamicznej adaptacji układu mapy przy skalowaniu okna został skonfigurowany.");
     }
 
-    /**
-     * KROK 64: Rejestruje słuchacza zdarzenia skalingu/zmiany rozmiaru komponentu (ComponentListener).
-     * Zachowuje środek geograficzny mapy i wymusza ponowne przeliczenie widoku w wątku Swing EDT.
-     */
     private void setupResizeListener() {
         this.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent e) {
-                if (mapViewer == null) {
-                    return;
-                }
-
-                // Pobranie bieżącego środka geograficznego przed przeliczeniem układy
+                if (mapViewer == null) return;
                 GeoPosition currentCenter = mapViewer.getAddressLocation();
-
-                // Odświeżenie geometrii i przeliczenie granicy widoku (Viewport)
                 mapViewer.revalidate();
-
                 if (currentCenter != null) {
                     mapViewer.setAddressLocation(currentCenter);
                 }
-
                 mapViewer.repaint();
-                logger.trace("Dopasowano geometrię MapPanel po zmianie rozmiaru okna. Wymiary: {}x{}", getWidth(), getHeight());
             }
         });
     }
@@ -146,9 +125,7 @@ public class MapPanel extends JPanel {
         this.mapViewer.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (e.getButton() != MouseEvent.BUTTON1) {
-                    return;
-                }
+                if (e.getButton() != MouseEvent.BUTTON1) return;
 
                 Point clickPoint = e.getPoint();
                 Waypoint selectedStop = findNearestWaypointAtPoint(clickPoint);
@@ -307,6 +284,20 @@ public class MapPanel extends JPanel {
         this.waypoints.clear();
         this.waypointPainter.setWaypoints(this.waypoints);
         this.mapViewer.repaint();
+    }
+
+    /**
+     * KROK 74: Metoda czyszcząca specyficzne zaznaczenie przystanku na mapie.
+     * Wywoływana z poziomu MapController przy akcji powrotu do widoku ogólnego.
+     */
+    public void clearSelectedStop() {
+        // Jeśli dodawałeś specjalną warstwę/kolor dla zaznaczonego przystanku
+        // w StopWaypointRenderer, możesz go w tym miejscu wyzerować.
+        // Obecnie wymuszamy jedynie przerysowanie mapy, co jest zachowaniem neutralnym i pożądanym.
+        SwingUtilities.invokeLater(() -> {
+            logger.debug("MapPanel: Czyszczenie widoku zaznaczonego przystanku.");
+            mapViewer.repaint();
+        });
     }
 
     public JXMapViewer getMapViewer() {
