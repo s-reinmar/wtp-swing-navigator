@@ -9,10 +9,12 @@ import pl.j.reinmar.mapwaw.wtp.ui.controller.MapController;
 import javax.swing.*;
 import javax.swing.table.TableColumnModel;
 import java.awt.*;
+import java.awt.event.ActionListener;
 
 /**
- * Panel boczny prezentujący tablicę odjazdów z przystanku.
- * Zawiera nagłówek, przycisk czyszczenia oraz tabelę JTable skonfigurowaną z customowym modelem.
+ * Panel boczny prezentujący tablicę odjazdów z przystanku[cite: 4].
+ * Zawiera nagłówek, przycisk czyszczenia, checkboxy do filtrowania typów transportu
+ * oraz tabelę JTable skonfigurowaną z customowym modelem[cite: 4].
  */
 public class DepartureBoardPanel extends JPanel {
 
@@ -22,54 +24,82 @@ public class DepartureBoardPanel extends JPanel {
     private JTable departureTable;
     private DepartureTableModel tableModel;
     private JButton clearButton;
-    private MapController mapController; // Referencja do kontrolera obsługującego akcję czyszczenia
+    private MapController mapController;
 
-    /**
-     * Konstruktor tworzący panel tablicy odjazdów.
-     */
+    // KROK 75: Checkboxy do filtrowania odjazdów
+    private JCheckBox busCheckBox;
+    private JCheckBox tramCheckBox;
+    private JCheckBox metroCheckBox;
+
     public DepartureBoardPanel() {
-        logger.info("Inicjalizacja DepartureBoardPanel...");
+        logger.info("Inicjalizacja DepartureBoardPanel z filtrami transportu...");
         initUI();
     }
 
-    /**
-     * Inicjalizuje układ, komponenty Swing oraz nakłada customowy renderer komórek.
-     */
     private void initUI() {
         setLayout(new BorderLayout(8, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // 1. NAGŁÓWEK TABLICY ODJAZDÓW I PRZYCISK CZYSZCZENIA
+        // 1. GŁÓWNY PANEL NAGŁÓWKA (Zawiera tytuł, przycisk i filtry)
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 0, 2, 0, new Color(0, 102, 204)),
                 BorderFactory.createEmptyBorder(4, 4, 6, 4)
         ));
 
+        // 1A. Górna część nagłówka (Etykieta i przycisk czyszczenia)
+        JPanel topHeaderPart = new JPanel(new BorderLayout());
+
         stopHeaderLabel = new JLabel("Wybierz przystanek z mapy / szukaj", SwingConstants.LEFT);
         stopHeaderLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
         stopHeaderLabel.setForeground(new Color(0, 51, 102));
-        headerPanel.add(stopHeaderLabel, BorderLayout.CENTER);
+        topHeaderPart.add(stopHeaderLabel, BorderLayout.CENTER);
 
-        // KROK 74: Przycisk czyszczenia zaznaczenia i powrotu
         clearButton = new JButton("Wyczyść / Powrót");
         clearButton.setFocusable(false);
         clearButton.addActionListener(e -> {
             if (mapController != null) {
                 mapController.clearSelection();
-            } else {
-                logger.warn("Przycisk czyszczenia kliknięty, ale MapController nie jest podpięty do DepartureBoardPanel.");
             }
         });
-        headerPanel.add(clearButton, BorderLayout.EAST);
+        topHeaderPart.add(clearButton, BorderLayout.EAST);
+
+        headerPanel.add(topHeaderPart, BorderLayout.NORTH);
+
+        // 1B. KROK 75: Dolna część nagłówka (Filtry transportu)
+        JPanel filterPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 5));
+
+        busCheckBox = new JCheckBox("Autobusy", true);
+        tramCheckBox = new JCheckBox("Tramwaje", true);
+        metroCheckBox = new JCheckBox("Metro", true);
+
+        busCheckBox.setFocusPainted(false);
+        tramCheckBox.setFocusPainted(false);
+        metroCheckBox.setFocusPainted(false);
+
+        // Wspólny listener dla checkboxów automatycznie odświeżający tabelę po kliknięciu
+        ActionListener filterListener = e -> {
+            if (mapController != null) {
+                mapController.refreshDepartureBoard();
+            }
+        };
+        busCheckBox.addActionListener(filterListener);
+        tramCheckBox.addActionListener(filterListener);
+        metroCheckBox.addActionListener(filterListener);
+
+        filterPanel.add(new JLabel("Pokaż:"));
+        filterPanel.add(busCheckBox);
+        filterPanel.add(tramCheckBox);
+        filterPanel.add(metroCheckBox);
+
+        headerPanel.add(filterPanel, BorderLayout.SOUTH);
 
         add(headerPanel, BorderLayout.NORTH);
 
-        // 2. MODEL I TABELA ODJAZDÓW (JTable)
+        // 2. MODEL I TABELA ODJAZDÓW (JTable)[cite: 4]
         tableModel = new DepartureTableModel();
         departureTable = new JTable(tableModel);
 
-        // Ogólne właściwości JTable
         departureTable.setRowHeight(28);
         departureTable.setFont(new Font("SansSerif", Font.PLAIN, 12));
         departureTable.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
@@ -80,22 +110,16 @@ public class DepartureBoardPanel extends JPanel {
 
         JScrollPane scrollPane = new JScrollPane(departureTable);
         add(scrollPane, BorderLayout.CENTER);
-
-        logger.info("Panel DepartureBoardPanel został pomyślnie skonfigurowany.");
     }
 
-    /**
-     * Konfiguruje preferowane szerokości kolumn oraz nakłada customowy renderer komórek.
-     */
     private void setupTableColumns() {
         TableColumnModel columnModel = departureTable.getColumnModel();
-
-        columnModel.getColumn(0).setPreferredWidth(60);  // Linia
+        columnModel.getColumn(0).setPreferredWidth(60);
         columnModel.getColumn(0).setMaxWidth(80);
-        columnModel.getColumn(1).setPreferredWidth(160); // Kierunek
-        columnModel.getColumn(2).setPreferredWidth(110); // Czas rozkładowy
-        columnModel.getColumn(3).setPreferredWidth(130); // Estymowany czas (GPS)
-        columnModel.getColumn(4).setPreferredWidth(90);  // Opóźnienie
+        columnModel.getColumn(1).setPreferredWidth(160);
+        columnModel.getColumn(2).setPreferredWidth(110);
+        columnModel.getColumn(3).setPreferredWidth(130);
+        columnModel.getColumn(4).setPreferredWidth(90);
 
         DepartureTableCellRenderer cellRenderer = new DepartureTableCellRenderer();
         for (int i = 0; i < departureTable.getColumnCount(); i++) {
@@ -103,9 +127,6 @@ public class DepartureBoardPanel extends JPanel {
         }
     }
 
-    /**
-     * Ustawia nagłówek z nazwą i kodem aktywnego przystanku.
-     */
     public void setStopHeader(String stopName) {
         SwingUtilities.invokeLater(() -> {
             if (stopName != null && !stopName.isBlank()) {
@@ -116,18 +137,15 @@ public class DepartureBoardPanel extends JPanel {
         });
     }
 
-    /**
-     * Przypisuje instancję MapController do panelu, by obsłużyć akcję przycisku "Wyczyść".
-     */
     public void setMapController(MapController mapController) {
         this.mapController = mapController;
     }
 
-    public DepartureTableModel getTableModel() {
-        return tableModel;
-    }
+    public DepartureTableModel getTableModel() { return tableModel; }
+    public JTable getDepartureTable() { return departureTable; }
 
-    public JTable getDepartureTable() {
-        return departureTable;
-    }
+    // --- Metody dostępu do stanu filtrów ---
+    public boolean isBusFilterActive() { return busCheckBox.isSelected(); }
+    public boolean isTramFilterActive() { return tramCheckBox.isSelected(); }
+    public boolean isMetroFilterActive() { return metroCheckBox.isSelected(); }
 }
