@@ -16,8 +16,8 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Zoptymalizowany klient HTTP odporny na błędy braku połączenia internetowego
- * oraz przeciążenia/przerwy w działaniu serwerów API UM Warszawa.
+ * Klient HTTP odpowiedzialny za komunikację z REST API UM Warszawa
+ * z wbudowanym pomiarem i rejestrowaniem metryk czasu odpowiedzi w logach (SLF4J).
  */
 public class WtpRealtimeApiClient {
 
@@ -31,7 +31,7 @@ public class WtpRealtimeApiClient {
         this.apiEndpoint = AppConfig.getApiEndpoint();
         this.resourceId = AppConfig.getResourceId();
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(6)) // Krótki timeout połączenia
+                .connectTimeout(Duration.ofSeconds(6))
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
     }
@@ -59,48 +59,108 @@ public class WtpRealtimeApiClient {
     }
 
     /**
-     * Główna metoda wykonująca zapytanie HTTP z kompleksową obsługą błędów sieci.
+     * Główna metoda wykonująca zapytanie HTTP z pomiarem czasu odpowiedzi i rejestrowaniem metryk w dzienniku zdarzeń.
+     *
+     * @param type       1 = Autobusy, 2 = Tramwaje
+     * @param lineNumber opcjonalny numer linii
+     * @return odpowiedź JSON z API UM
      */
     public String fetchRawVehicleData(int type, String lineNumber) {
         String url = buildApiUrl(type, lineNumber);
-        logger.debug("Wysyłanie zapytania HTTP GET pod adres: {}", url);
+        String vehicleTypeLabel = (type == 1) ? "Autobusy" : "Tramwaje";
+
+        logger.debug("Wysyłanie zapytania HTTP GET [{}] pod adres: {}", vehicleTypeLabel, url);
+
+        // Pomiar czasu rozpoczęcia zapytania HTTP
+        long startTimeMs = System.currentTimeMillis();
 
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(8)) // Max czas oczekiwania na odpowiedź
+                    .timeout(Duration.ofSeconds(8))
                     .header("Accept", "application/json")
                     .GET()
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
+            // KROK 47: Wyliczenie czasów odpowiedzi w milisekundach
+            long responseTimeMs = System.currentTimeMillis() - startTimeMs;
+            String responseBody = response.body();
+            int bodyLengthBytes = (responseBody != null) ? responseBody.getBytes().length : 0;
+
             if (response.statusCode() == 200) {
-                String body = response.body();
-                // Sprawdzenie, czy serwer UM nie zwrócił błędu w treści JSON
-                if (body != null && body.contains("\"result\":\"false\"")) {
-                    logger.warn("Serwer API UM zwrócił komunikat o błędnym zapytaniu lub braku klucza API.");
+                if (responseBody != null && responseBody.contains("\"result\":\"false\"")) {
+                    logger.warn("METRYKA API: Serwer ZTM zwrócił błąd autoryzacji/klucza | Typ: {} | Czas odpowiedzi: {} ms",
+                            vehicleTypeLabel, responseTimeMs);
                     return "";
                 }
-                return body;
+
+                // Logowanie metryki czasowej dla udanego zapytania
+                logger.info("METRYKA API: Pomyślnie pobrano dane [{}] | Czas odpowiedzi: {} ms | Kod HTTP: {} | Rozmiar: {} B",
+                        vehicleTypeLabel, responseTimeMs, response.statusCode(), bodyLengthBytes);
+
+                return responseBody;
             } else {
-                logger.warn("Serwer API UM odpowiedział kodem błędu HTTP: {}", response.statusCode());
+                logger.warn("METRYKA API: Błąd odpowiedzi ZTM [{}] | Kod HTTP: {} | Czas odpowiedzi: {} ms",
+                        vehicleTypeLabel, response.statusCode(), responseTimeMs);
             }
 
         } catch (UnknownHostException | ConnectException e) {
-            // KROK 45: Brak połączenia z Internetem lub problem z DNS
-            logger.error("Brak połączenia z Internetem lub serwerem UM Warszawa: {}", e.getMessage());
+            long responseTimeMs = System.currentTimeMillis() - startTimeMs;
+            logger.error("METRYKA API: Brak połączenia internetowego/DNS [{}] | Czas do błędu: {} ms | Komunikat: {}",
+                    vehicleTypeLabel, responseTimeMs, e.getMessage());
         } catch (HttpTimeoutException e) {
-            // KROK 45: Przekroczono limit czasu odpowiedzi serwera ZTM
-            logger.warn("Przekroczono czas oczekiwania na odpowiedź serwera API UM (Timeout 8s).");
+            long responseTimeMs = System.currentTimeMillis() - startTimeMs;
+            logger.warn("METRYKA API: Przekroczono limit czasu odpowiedzi (Timeout) [{}] | Czas: {} ms",
+                    vehicleTypeLabel, responseTimeMs);
         } catch (IOException e) {
-            logger.error("Błąd wejścia/wyjścia podczas połączenia z API ZTM: {}", e.getMessage());
+            long responseTimeMs = System.currentTimeMillis() - startTimeMs;
+            logger.error("METRYKA API: Błąd I/O podczas połączenia [{}] | Czas: {} ms | Komunikat: {}",
+                    vehicleTypeLabel, responseTimeMs, e.getMessage());
         } catch (InterruptedException e) {
-            logger.warn("Przerwano połączenie HTTP z API ZTM: {}", e.getMessage());
+            long responseTimeMs = System.currentTimeMillis() - startTimeMs;
+            logger.warn("METRYKA API: Przerwano zapytanie HTTP [{}] | Czas do przerwania: {} ms",
+                    vehicleTypeLabel, responseTimeMs);
             Thread.currentThread().interrupt();
         }
 
-        return ""; // Zwraca pusty ciąg, informując serwis nadrzędny o niepowodzeniu
+        return "";
+    }
+
+    /**
+     * Asynchroniczne pobieranie danych GPS z metrykami czasowymi.
+     */
+    public CompletableFuture<String> fetchRawVehicleDataAsync(int type) {
+        String url = buildApiUrl(type, null);
+        String vehicleTypeLabel = (type == 1) ? "Autobusy" : "Tramwaje";
+        long startTimeMs = System.currentTimeMillis();
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(8))
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    long responseTimeMs = System.currentTimeMillis() - startTimeMs;
+                    if (response.statusCode() == 200) {
+                        logger.info("METRYKA API (Async): Pobrano dane [{}] | Czas odpowiedzi: {} ms",
+                                vehicleTypeLabel, responseTimeMs);
+                        return response.body();
+                    }
+                    logger.warn("METRYKA API (Async): Błąd statusu HTTP [{}] | Kod: {} | Czas: {} ms",
+                            vehicleTypeLabel, response.statusCode(), responseTimeMs);
+                    return "";
+                })
+                .exceptionally(ex -> {
+                    long responseTimeMs = System.currentTimeMillis() - startTimeMs;
+                    logger.error("METRYKA API (Async): Wyjątek połączenia [{}] | Czas: {} ms | Komunikat: {}",
+                            vehicleTypeLabel, responseTimeMs, ex.getMessage());
+                    return "";
+                });
     }
 
     private String buildApiUrl(int type, String lineNumber) {
