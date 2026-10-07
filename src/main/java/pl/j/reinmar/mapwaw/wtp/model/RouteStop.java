@@ -5,8 +5,8 @@ package pl.j.reinmar.mapwaw.wtp.model;
  */
 public class RouteStop {
     private Stop stop;                    // Referencja do obiektu przystanku
-    private int sequenceOrder;            // Kolejność na trasie (1, 2, 3...)[cite: 12]
-    private int travelTimeFromStartSec;   // Czas dojazdu od pętli początkowej w sekundach[cite: 12]
+    private int sequenceOrder;            // Kolejność na trasie (1, 2, 3...)
+    private int travelTimeFromStartSec;   // Czas dojazdu od pętli początkowej w sekundach
 
     public RouteStop(Stop stop, int sequenceOrder, int travelTimeFromStartSec) {
         this.stop = stop;

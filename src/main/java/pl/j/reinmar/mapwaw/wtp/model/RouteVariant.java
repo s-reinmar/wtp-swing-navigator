@@ -3,13 +3,13 @@ package pl.j.reinmar.mapwaw.wtp.model;
 import java.util.List;
 
 /**
- * Klasa domenowa reprezentująca wariant trasy (kierunek oraz uporządkowaną listę przystanków)[cite: 12].
+ * Klasa domenowa reprezentująca wariant trasy (kierunek oraz uporządkowaną listę przystanków).
  */
 public class RouteVariant {
-    private String id;                  // Unikalny identyfikator wariantu[cite: 12]
-    private String lineNumber;          // Powiązany numer linii[cite: 12]
-    private String directionName;       // Nazwa przystanku docelowego (np. Gocław)[cite: 12]
-    private List<RouteStop> routeStops; // Uporządkowana lista przystanków na trasie[cite: 12]
+    private String id;                  // Unikalny identyfikator wariantu
+    private String lineNumber;          // Powiązany numer linii
+    private String directionName;       // Nazwa przystanku docelowego (np. Gocław)
+    private List<RouteStop> routeStops; // Uporządkowana lista przystanków na trasie
 
     public RouteVariant(String id, String lineNumber, String directionName, List<RouteStop> routeStops) {
         this.id = id;

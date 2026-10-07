@@ -39,7 +39,6 @@ build/
 .DS_Store
 
 
-apiKey.txt
 config.properties
 *.log
 /src/main/resources/data/

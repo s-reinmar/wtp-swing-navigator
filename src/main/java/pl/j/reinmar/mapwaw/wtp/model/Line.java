@@ -1,12 +1,12 @@
 package pl.j.reinmar.mapwaw.wtp.model;
 
 /**
- * Klasa domenowa reprezentująca linię komunikacyjną (np. 507, 17, M1)[cite: 6, 12, 13].
+ * Klasa domenowa reprezentująca linię komunikacyjną (np. 507, 17, M1).
  */
 public class Line {
-    private String lineNumber;          // Numer linii (np. 507, 17, M1)[cite: 6, 12, 13]
-    private TransportType transportType; // Typ transportu: BUS, TRAM, METRO[cite: 6, 12, 13]
-    private String operator;            // Przewoźnik (np. MZA, TW)[cite: 6, 12, 13]
+    private String lineNumber;          // Numer linii (np. 507, 17, M1)
+    private TransportType transportType; // Typ transportu: BUS, TRAM, METRO
+    private String operator;            // Przewoźnik (np. MZA, TW)
 
     public Line(String lineNumber, TransportType transportType, String operator) {
         this.lineNumber = lineNumber;

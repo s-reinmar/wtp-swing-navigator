@@ -3,14 +3,14 @@ package pl.j.reinmar.mapwaw.wtp.model;
 import java.time.LocalTime;
 
 /**
- * Klasa domenowa reprezentująca rozkładowy odjazd pojazdu z przystanku[cite: 11, 12].
+ * Klasa domenowa reprezentująca rozkładowy odjazd pojazdu z przystanku.
  */
 public class Departure {
-    private Line line;               // Linia komunikacyjna[cite: 11, 12]
-    private Stop stop;               // Przystanek[cite: 11, 12]
-    private LocalTime departureTime; // Godzina odjazdu[cite: 11, 12]
-    private DayType dayType;         // Typ dnia (WEEKDAY, SATURDAY, SUNDAY)[cite: 11, 12]
-    private String brigade;          // Numer brygady (np. 04)[cite: 11, 12]
+    private Line line;               // Linia komunikacyjna
+    private Stop stop;               // Przystanek
+    private LocalTime departureTime; // Godzina odjazdu
+    private DayType dayType;         // Typ dnia (WEEKDAY, SATURDAY, SUNDAY)
+    private String brigade;          // Numer brygady (np. 04)
 
     public Departure(Line line, Stop stop, LocalTime departureTime, DayType dayType, String brigade) {
         this.line = line;
