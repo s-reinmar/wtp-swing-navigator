@@ -1,4 +1,4 @@
-package pl.j.reinmar.mapwaw.wtp.test;
+package pl.j.reinmar.mapwaw.wtp;
 
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.OSMTileFactoryInfo;
