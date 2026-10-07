@@ -83,6 +83,73 @@ public class RoutingEngine {
     }
 
     /**
+     * Zwraca trasy wymagające dokładnie jednej przesiadki, uporządkowane według
+     * liczby przejechanych odcinków.
+     */
+    public List<RouteResult> findRoutesWithOneTransfer(Stop origin, Stop destination) {
+        if (!hasStopId(origin) || !hasStopId(destination)
+                || origin.getId().equals(destination.getId())) {
+            return List.of();
+        }
+
+        List<VariantPath> variants = routeVariants.stream()
+                .filter(variant -> variant != null && variant.getLineNumber() != null
+                        && !variant.getLineNumber().isBlank() && variant.getRouteStops() != null)
+                .map(variant -> new VariantPath(variant, orderedStops(variant)))
+                .filter(variantPath -> variantPath.stops().size() >= 2)
+                .toList();
+        List<RouteResult> routes = new ArrayList<>();
+
+        for (VariantPath first : variants) {
+            for (int originIndex = 0; originIndex < first.stops().size() - 1; originIndex++) {
+                if (!origin.getId().equals(first.stops().get(originIndex).getId())) {
+                    continue;
+                }
+                for (int transferIndex = originIndex + 1;
+                     transferIndex < first.stops().size(); transferIndex++) {
+                    Stop interchange = first.stops().get(transferIndex);
+                    for (VariantPath second : variants) {
+                        if (sameService(first.variant(), second.variant())) {
+                            continue;
+                        }
+                        int secondTransferIndex = indexOfStop(second.stops(), interchange.getId(), 0);
+                        if (secondTransferIndex < 0
+                                || secondTransferIndex >= second.stops().size() - 1) {
+                            continue;
+                        }
+                        int destinationIndex = indexOfStop(
+                                second.stops(), destination.getId(), secondTransferIndex + 1);
+                        if (destinationIndex < 0) {
+                            continue;
+                        }
+
+                        List<Stop> firstLegStops = List.copyOf(
+                                first.stops().subList(originIndex, transferIndex + 1));
+                        List<Stop> secondLegStops = new ArrayList<>(
+                                second.stops().subList(secondTransferIndex, destinationIndex + 1));
+                        secondLegStops.set(0, interchange);
+                        routes.add(new RouteResult(1, List.of(
+                                new RouteLeg(first.variant().getLineNumber(),
+                                        first.variant().getDirectionName(), firstLegStops),
+                                new RouteLeg(second.variant().getLineNumber(),
+                                        second.variant().getDirectionName(), secondLegStops)
+                        )));
+                    }
+                }
+            }
+        }
+
+        routes.sort(Comparator.comparingInt(RoutingEngine::countHops)
+                .thenComparing(route -> route.legs().get(0).lineNumber())
+                .thenComparing(route -> route.legs().get(1).lineNumber())
+                .thenComparing(route -> route.legs().get(0).directionName() == null
+                        ? "" : route.legs().get(0).directionName())
+                .thenComparing(route -> route.legs().get(1).directionName() == null
+                        ? "" : route.legs().get(1).directionName()));
+        return List.copyOf(routes);
+    }
+
+    /**
      * Finds the best route. Stops are matched by their GTFS stop ID, not object identity.
      *
      * @return an empty result when either stop is invalid or no directed route connects them
@@ -173,6 +240,32 @@ public class RoutingEngine {
         return connectionsByStop;
     }
 
+    private static List<Stop> orderedStops(RouteVariant variant) {
+        return variant.getRouteStops().stream()
+                .filter(routeStop -> routeStop != null && hasStopId(routeStop.getStop()))
+                .sorted(Comparator.comparingInt(RouteStop::getSequenceOrder))
+                .map(RouteStop::getStop)
+                .toList();
+    }
+
+    private static boolean sameService(RouteVariant first, RouteVariant second) {
+        return first.getLineNumber().equals(second.getLineNumber())
+                && java.util.Objects.equals(first.getDirectionName(), second.getDirectionName());
+    }
+
+    private static int indexOfStop(List<Stop> stops, String stopId, int startIndex) {
+        for (int i = startIndex; i < stops.size(); i++) {
+            if (stopId.equals(stops.get(i).getId())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int countHops(RouteResult route) {
+        return route.legs().stream().mapToInt(leg -> leg.stops().size() - 1).sum();
+    }
+
     private List<Connection> reconstructPath(State start, State target,
                                               Map<State, Previous> previousStates) {
         List<Connection> path = new ArrayList<>();
@@ -234,6 +327,9 @@ public class RoutingEngine {
     }
 
     private record Connection(Stop from, Stop to, RouteVariant routeVariant) {
+    }
+
+    private record VariantPath(RouteVariant variant, List<Stop> stops) {
     }
 
     private record State(String stopId, String lineNumber, String directionName) {

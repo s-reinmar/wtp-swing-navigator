@@ -51,6 +51,60 @@ class RoutingEngineTest {
     }
 
     @Test
+    @DisplayName("Znajduje i sortuje trasy wymagające dokładnie jednej przesiadki")
+    void findsRoutesWithExactlyOneTransfer() {
+        Stop origin = stop("A");
+        Stop nearInterchange = stop("B");
+        Stop interchange = stop("C");
+        Stop destination = stop("D");
+        Stop longerInterchange = stop("E");
+        Stop threeTransferStart = stop("X");
+        Stop threeTransferFirst = stop("Y");
+        Stop threeTransferSecond = stop("Z");
+        Stop threeTransferDestination = stop("W");
+        RoutingEngine engine = new RoutingEngine(List.of(
+                variant("direct", "1", "D", origin, destination),
+                variant("first-short", "17", "Dworzec", origin, nearInterchange),
+                variant("second-short", "9", "Centrum", nearInterchange, destination),
+                variant("first-long", "2", "Pętla", origin, interchange, longerInterchange),
+                variant("second-long", "3", "Centrum", longerInterchange, destination),
+                variant("third-leg-a", "4", "Pośredni", threeTransferStart, threeTransferFirst),
+                variant("third-leg-b", "5", "Pośredni", threeTransferFirst, threeTransferSecond),
+                variant("third-leg-c", "6", "Cel", threeTransferSecond, threeTransferDestination)
+        ));
+
+        List<RoutingEngine.RouteResult> routes = engine.findRoutesWithOneTransfer(origin, destination);
+
+        assertEquals(2, routes.size());
+        assertTrue(routes.stream().allMatch(route -> route.transfers() == 1
+                && route.legs().size() == 2));
+        assertEquals(List.of("17", "9"), routes.getFirst().legs().stream()
+                .map(RoutingEngine.RouteLeg::lineNumber)
+                .toList());
+        assertEquals(List.of("A", "B"), stopIds(routes.getFirst().legs().get(0).stops()));
+        assertEquals(List.of("B", "D"), stopIds(routes.getFirst().legs().get(1).stops()));
+        assertEquals(List.of("2", "3"), routes.get(1).legs().stream()
+                .map(RoutingEngine.RouteLeg::lineNumber)
+                .toList());
+        assertEquals(List.of("A", "C", "E"), stopIds(routes.get(1).legs().get(0).stops()));
+        assertEquals(List.of("E", "D"), stopIds(routes.get(1).legs().get(1).stops()));
+    }
+
+    @Test
+    @DisplayName("Nie znajduje tras z przesiadką dla nieprawidłowych lub identycznych przystanków")
+    void handlesInvalidEndpointsForOneTransferSearch() {
+        RoutingEngine engine = new RoutingEngine(List.of(
+                variant("first", "1", "Cel", stop("A"), stop("B")),
+                variant("second", "2", "Cel", stop("B"), stop("C"))
+        ));
+
+        assertTrue(engine.findRoutesWithOneTransfer(null, stop("C")).isEmpty());
+        assertTrue(engine.findRoutesWithOneTransfer(stop(" "), stop("C")).isEmpty());
+        assertTrue(engine.findRoutesWithOneTransfer(stop("A"), stop("A")).isEmpty());
+        assertTrue(engine.findRoutesWithOneTransfer(stop("C"), stop("A")).isEmpty());
+    }
+
+    @Test
     @DisplayName("Wybiera trasę bez przesiadek przed krótszą trasą wymagającą przesiadki")
     void prefersFewerTransfersBeforeFewerStops() {
         Stop start = stop("A");
