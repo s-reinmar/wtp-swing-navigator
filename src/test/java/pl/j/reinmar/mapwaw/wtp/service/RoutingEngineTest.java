@@ -2,16 +2,75 @@ package pl.j.reinmar.mapwaw.wtp.service;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import pl.j.reinmar.mapwaw.wtp.model.DayType;
+import pl.j.reinmar.mapwaw.wtp.model.Departure;
+import pl.j.reinmar.mapwaw.wtp.model.Line;
 import pl.j.reinmar.mapwaw.wtp.model.RouteStop;
 import pl.j.reinmar.mapwaw.wtp.model.RouteVariant;
 import pl.j.reinmar.mapwaw.wtp.model.Stop;
+import pl.j.reinmar.mapwaw.wtp.model.TransportType;
+import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
 
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class RoutingEngineTest {
+
+    @Test
+    @DisplayName("Dobiera najbliższy odjazd po czasie wskazanym dla trasy bezpośredniej")
+    void schedulesDirectRouteFromUserDepartureTime() {
+        Stop origin = stop("A");
+        Stop destination = stop("B");
+        RoutingEngine engine = new RoutingEngine(List.of(
+                variantWithTravelTime("line", "17", "Centrum", 0, origin, 600, destination)
+        ));
+        ScheduleRepository schedule = new ScheduleRepository();
+        addDeparture(schedule, "line", "17", origin, LocalTime.of(8, 30), DayType.WEEKDAY);
+        addDeparture(schedule, "line", "17", origin, LocalTime.of(8, 45), DayType.WEEKDAY);
+        addDeparture(schedule, "line", "17", origin, LocalTime.of(8, 40), DayType.SATURDAY);
+
+        List<RoutingEngine.ScheduledRoute> routes = engine.findDirectRoutes(
+                origin, destination, LocalDateTime.of(2026, 10, 5, 8, 32), schedule);
+
+        assertEquals(1, routes.size());
+        assertEquals(LocalDateTime.of(2026, 10, 5, 8, 45),
+                routes.getFirst().departureDateTime());
+        assertEquals(LocalDateTime.of(2026, 10, 5, 8, 55),
+                routes.getFirst().arrivalDateTime());
+    }
+
+    @Test
+    @DisplayName("Uwzględnia czas dojazdu i oczekiwanie na drugi kurs przy jednej przesiadce")
+    void schedulesOneTransferAfterArrivalAtInterchange() {
+        Stop origin = stop("A");
+        Stop interchange = stop("B");
+        Stop destination = stop("C");
+        RoutingEngine engine = new RoutingEngine(List.of(
+                variantWithTravelTime("first", "17", "Dworzec", 0, origin, 600, interchange),
+                variantWithTravelTime("second", "9", "Centrum", 0, interchange, 600, destination)
+        ));
+        ScheduleRepository schedule = new ScheduleRepository();
+        addDeparture(schedule, "first", "17", origin, LocalTime.of(8, 45), DayType.WEEKDAY);
+        addDeparture(schedule, "second", "9", interchange, LocalTime.of(8, 50), DayType.WEEKDAY);
+        addDeparture(schedule, "second", "9", interchange, LocalTime.of(9, 5), DayType.WEEKDAY);
+
+        List<RoutingEngine.ScheduledRoute> routes = engine.findRoutesWithOneTransfer(
+                origin, destination, LocalDateTime.of(2026, 10, 5, 8, 32), schedule);
+
+        assertEquals(1, routes.size());
+        RoutingEngine.ScheduledRoute route = routes.getFirst();
+        assertEquals(1, route.transfers());
+        assertEquals(LocalDateTime.of(2026, 10, 5, 8, 45), route.departureDateTime());
+        assertEquals(LocalDateTime.of(2026, 10, 5, 8, 55),
+                route.legs().getFirst().arrivalDateTime());
+        assertEquals(LocalDateTime.of(2026, 10, 5, 9, 5),
+                route.legs().getLast().departureDateTime());
+        assertEquals(LocalDateTime.of(2026, 10, 5, 9, 15), route.arrivalDateTime());
+    }
 
     @Test
     @DisplayName("Znajduje wszystkie bezpośrednie warianty i zachowuje przystanki po drodze")
@@ -168,6 +227,23 @@ class RoutingEngineTest {
                 .mapToObj(index -> new RouteStop(stops[index], index + 1, 0))
                 .toList();
         return new RouteVariant(id, line, direction, routeStops);
+    }
+
+    private static RouteVariant variantWithTravelTime(String id, String line, String direction,
+                                                       int firstTravelTime, Stop firstStop,
+                                                       int secondTravelTime, Stop secondStop) {
+        return new RouteVariant(id, line, direction, List.of(
+                new RouteStop(firstStop, 1, firstTravelTime),
+                new RouteStop(secondStop, 2, secondTravelTime)
+        ));
+    }
+
+    private static void addDeparture(ScheduleRepository repository, String tripId,
+                                     String lineNumber, Stop stop, LocalTime departureTime,
+                                     DayType dayType) {
+        repository.addDeparture(new Departure(tripId,
+                new Line(lineNumber, TransportType.BUS, "MZA"),
+                stop, departureTime, dayType, "01"));
     }
 
     private static Stop stop(String id) {

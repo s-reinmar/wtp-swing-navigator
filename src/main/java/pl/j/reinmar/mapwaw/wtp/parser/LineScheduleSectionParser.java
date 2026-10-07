@@ -40,6 +40,7 @@ public class LineScheduleSectionParser {
             }
 
             // Standard GTFS routes.txt: route_id, agency_id, route_short_name, route_long_name, route_type
+            String routeId = cleanValue(parts[0]);
             String agencyId = cleanValue(parts[1]);
             String lineNumber = cleanValue(parts[2]);
             String routeTypeStr = cleanValue(parts[4]);
@@ -50,7 +51,7 @@ public class LineScheduleSectionParser {
 
             // Tworzenie encji linii i dodanie do magazynu in-memory
             Line transitLine = new Line(lineNumber, transportType, operator);
-            repository.addLine(transitLine);
+            repository.addLine(routeId, transitLine);
 
             return true;
         } catch (Exception e) {

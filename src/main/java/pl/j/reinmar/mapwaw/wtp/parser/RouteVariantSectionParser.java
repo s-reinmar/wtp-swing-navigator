@@ -2,6 +2,7 @@ package pl.j.reinmar.mapwaw.wtp.parser;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pl.j.reinmar.mapwaw.wtp.model.Line;
 import pl.j.reinmar.mapwaw.wtp.model.RouteStop;
 import pl.j.reinmar.mapwaw.wtp.model.RouteVariant;
 import pl.j.reinmar.mapwaw.wtp.model.Stop;
@@ -23,6 +24,7 @@ public class RouteVariantSectionParser {
     // Tymczasowe bufory do grupowania przystanków w ramach kursu/wariantu
     private final Map<String, List<RouteStopBuilderTemp>> tripStopsMap = new HashMap<>();
     private final Map<String, TripInfoTemp> tripInfoMap = new HashMap<>();
+    private final Map<String, Integer> tripStartTimeSeconds = new HashMap<>();
 
     /**
      * Tymczasowa klasa pomocnicza do budowania kroku trasy.
@@ -91,10 +93,16 @@ public class RouteVariantSectionParser {
 
             // Standard GTFS stop_times.txt: trip_id, arrival_time, departure_time, stop_id, stop_sequence, ...
             String tripId = cleanValue(parts[0]);
+            String arrivalTime = cleanValue(parts[1]);
+            String departureTime = cleanValue(parts[2]);
             String stopId = cleanValue(parts[3]);
             int sequence = Integer.parseInt(cleanValue(parts[4]));
-
-            int travelTimeSec = 0;
+            int stopTimeSeconds = parseGtfsTimeSeconds(
+                    !arrivalTime.isBlank() ? arrivalTime : departureTime);
+            int tripStartSeconds = tripStartTimeSeconds.computeIfAbsent(tripId,
+                    ignored -> parseGtfsTimeSeconds(
+                            !departureTime.isBlank() ? departureTime : arrivalTime));
+            int travelTimeSec = Math.max(0, stopTimeSeconds - tripStartSeconds);
 
             tripStopsMap.computeIfAbsent(tripId, k -> new ArrayList<>())
                     .add(new RouteStopBuilderTemp(stopId, sequence, travelTimeSec));
@@ -109,7 +117,15 @@ public class RouteVariantSectionParser {
      * Finalizuje budowanie wariantów tras i przypisuje je do repozytorium.
      */
     public void buildAndStoreVariants(ScheduleRepository repository) {
+        buildVariants(repository);
+    }
+
+    /**
+     * Buduje warianty tras i zwraca je do wykorzystania przez silnik routingu.
+     */
+    public List<RouteVariant> buildVariants(ScheduleRepository repository) {
         logger.info("Budowanie wariantów tras na podstawie {} kursów...", tripInfoMap.size());
+        List<RouteVariant> variants = new ArrayList<>();
 
         for (Map.Entry<String, TripInfoTemp> entry : tripInfoMap.entrySet()) {
             String tripId = entry.getKey();
@@ -132,11 +148,14 @@ public class RouteVariantSectionParser {
             }
 
             if (!routeStops.isEmpty()) {
-                RouteVariant variant = new RouteVariant(tripId, trip.routeId, trip.headsign, routeStops);
-                // Warianty można rejestrować w repozytorium lub przetwarzać dalej w silniku routingu
+                Line line = repository.findLineByRouteId(trip.routeId);
+                String lineNumber = line != null ? line.getLineNumber() : trip.routeId;
+                RouteVariant variant = new RouteVariant(tripId, lineNumber, trip.headsign, routeStops);
+                variants.add(variant);
             }
         }
         logger.info("Zakończono budowanie wariantów tras.");
+        return List.copyOf(variants);
     }
 
     private String cleanValue(String raw) {
@@ -146,5 +165,22 @@ public class RouteVariantSectionParser {
             cleaned = cleaned.substring(1, cleaned.length() - 1);
         }
         return cleaned.trim();
+    }
+
+    private int parseGtfsTimeSeconds(String rawTime) {
+        if (rawTime == null || rawTime.isBlank()) {
+            return 0;
+        }
+        String[] parts = rawTime.split(":");
+        if (parts.length != 3) {
+            throw new IllegalArgumentException("Nieprawidłowy czas GTFS: " + rawTime);
+        }
+        int hours = Integer.parseInt(parts[0]);
+        int minutes = Integer.parseInt(parts[1]);
+        int seconds = Integer.parseInt(parts[2]);
+        if (hours < 0 || minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) {
+            throw new IllegalArgumentException("Nieprawidłowy czas GTFS: " + rawTime);
+        }
+        return hours * 3600 + minutes * 60 + seconds;
     }
 }

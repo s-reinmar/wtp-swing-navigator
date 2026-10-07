@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import pl.j.reinmar.mapwaw.wtp.model.DayType;
 import pl.j.reinmar.mapwaw.wtp.model.Departure;
 import pl.j.reinmar.mapwaw.wtp.model.Line;
+import pl.j.reinmar.mapwaw.wtp.model.RouteVariant;
 import pl.j.reinmar.mapwaw.wtp.model.Stop;
 import pl.j.reinmar.mapwaw.wtp.model.TransportType;
 import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
@@ -87,6 +88,7 @@ class WtpTxtScheduleParserTest {
         Line bus = repository.findLineByNumber("507");
         assertNotNull(bus);
         assertEquals(TransportType.BUS, bus.getTransportType());
+        assertEquals(bus, repository.findLineByRouteId("0_507"));
 
         Line metro = repository.findLineByNumber("M1");
         assertNotNull(metro);
@@ -111,7 +113,27 @@ class WtpTxtScheduleParserTest {
 
         List<Departure> departures = repository.getDeparturesForStop("700901");
         assertEquals(1, departures.size());
+        assertEquals("TRIP_NIGHT_1", departures.getFirst().getTripId());
         assertEquals(LocalTime.of(1, 15, 0), departures.get(0).getDepartureTime());
+    }
+
+    @Test
+    @DisplayName("Oblicza czas przejazdu od początku kursu z godzin GTFS")
+    void shouldCalculateRouteStopTravelTimeFromGtfsTimes() {
+        repository.addStop(new Stop("A", "Początek", "01", 52.22, 21.0, true));
+        repository.addStop(new Stop("B", "Koniec", "02", 52.23, 21.0, true));
+        repository.addLine("route", new Line("507", TransportType.BUS, "MZA"));
+        RouteVariantSectionParser routeParser = new RouteVariantSectionParser();
+        assertTrue(routeParser.parseTripLine("route,service,trip,Centrum"));
+        assertTrue(routeParser.parseStopTimeLine("trip,08:00:00,08:02:00,A,1"));
+        assertTrue(routeParser.parseStopTimeLine("trip,08:10:00,08:10:00,B,2"));
+
+        List<RouteVariant> variants = routeParser.buildVariants(repository);
+
+        assertEquals(1, variants.size());
+        assertEquals("507", variants.getFirst().getLineNumber());
+        assertEquals(0, variants.getFirst().getRouteStops().getFirst().getTravelTimeFromStartSec());
+        assertEquals(480, variants.getFirst().getRouteStops().getLast().getTravelTimeFromStartSec());
     }
 
     @Test

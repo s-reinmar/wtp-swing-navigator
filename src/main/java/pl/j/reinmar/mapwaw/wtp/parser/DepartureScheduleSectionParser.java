@@ -55,7 +55,7 @@ public class DepartureScheduleSectionParser {
                 // Domyślny numer brygady (może być uzupełniony z dodatkowych metadanych)
                 String brigade = "01";
 
-                Departure departure = new Departure(line, stop, departureTime, dayType, brigade);
+                Departure departure = new Departure(tripId, line, stop, departureTime, dayType, brigade);
                 repository.addDeparture(departure);
             }
         } catch (Exception e) {

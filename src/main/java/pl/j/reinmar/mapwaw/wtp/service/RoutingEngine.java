@@ -1,9 +1,15 @@
 package pl.j.reinmar.mapwaw.wtp.service;
 
+import pl.j.reinmar.mapwaw.wtp.model.DayType;
+import pl.j.reinmar.mapwaw.wtp.model.Departure;
 import pl.j.reinmar.mapwaw.wtp.model.RouteStop;
 import pl.j.reinmar.mapwaw.wtp.model.RouteVariant;
 import pl.j.reinmar.mapwaw.wtp.model.Stop;
+import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -83,6 +89,42 @@ public class RoutingEngine {
     }
 
     /**
+     * Zwraca dostępne kursy bezpośrednie, uwzględniając najbliższy odjazd po
+     * wskazanej przez użytkownika dacie i godzinie.
+     */
+    public List<ScheduledRoute> findDirectRoutes(Stop origin, Stop destination,
+                                                  LocalDateTime departureDateTime,
+                                                  ScheduleRepository schedule) {
+        validateScheduleQuery(departureDateTime, schedule);
+        if (!hasDistinctStops(origin, destination)) {
+            return List.of();
+        }
+
+        List<ScheduledRoute> routes = new ArrayList<>();
+        for (RouteVariant variant : routeVariants) {
+            List<Stop> stops = validOrderedStops(variant);
+            int fromIndex = indexOfStop(stops, origin.getId(), 0);
+            int toIndex = fromIndex < 0 ? -1 : indexOfStop(stops, destination.getId(), fromIndex + 1);
+            if (toIndex < 0) {
+                continue;
+            }
+
+            LocalDateTime departure = findNextDeparture(
+                    schedule, variant, origin.getId(), departureDateTime);
+            if (departure == null) {
+                continue;
+            }
+            LocalDateTime arrival = departure.plusSeconds(
+                    travelTimeBetween(variant, origin.getId(), destination.getId()));
+            routes.add(new ScheduledRoute(0, List.of(new ScheduledLeg(
+                    new RouteLeg(variant.getLineNumber(), variant.getDirectionName(),
+                            stops.subList(fromIndex, toIndex + 1)),
+                    departure, arrival))));
+        }
+        return sortedByArrival(routes);
+    }
+
+    /**
      * Zwraca trasy wymagające dokładnie jednej przesiadki, uporządkowane według
      * liczby przejechanych odcinków.
      */
@@ -147,6 +189,85 @@ public class RoutingEngine {
                 .thenComparing(route -> route.legs().get(1).directionName() == null
                         ? "" : route.legs().get(1).directionName()));
         return List.copyOf(routes);
+    }
+
+    /**
+     * Znajduje wykonalne połączenia z dokładnie jedną przesiadką. Odjazdy
+     * dobierane są z rozkładu dla wskazanego dnia i czasu, a przesiadka musi
+     * nastąpić nie wcześniej niż szacowany przyjazd pierwszego kursu.
+     */
+    public List<ScheduledRoute> findRoutesWithOneTransfer(Stop origin, Stop destination,
+                                                           LocalDateTime departureDateTime,
+                                                           ScheduleRepository schedule) {
+        validateScheduleQuery(departureDateTime, schedule);
+        if (!hasDistinctStops(origin, destination)) {
+            return List.of();
+        }
+
+        List<VariantPath> variants = routeVariants.stream()
+                .filter(variant -> variant != null && variant.getLineNumber() != null
+                        && !variant.getLineNumber().isBlank() && variant.getRouteStops() != null)
+                .map(variant -> new VariantPath(variant, orderedStops(variant)))
+                .filter(variantPath -> variantPath.stops().size() >= 2)
+                .toList();
+        List<ScheduledRoute> routes = new ArrayList<>();
+
+        for (VariantPath first : variants) {
+            for (int originIndex = 0; originIndex < first.stops().size() - 1; originIndex++) {
+                if (!origin.getId().equals(first.stops().get(originIndex).getId())) {
+                    continue;
+                }
+                LocalDateTime firstDeparture = findNextDeparture(schedule,
+                        first.variant(), origin.getId(), departureDateTime);
+                if (firstDeparture == null) {
+                    continue;
+                }
+                for (int transferIndex = originIndex + 1;
+                     transferIndex < first.stops().size(); transferIndex++) {
+                    Stop interchange = first.stops().get(transferIndex);
+                    LocalDateTime interchangeArrival = firstDeparture.plusSeconds(
+                            travelTimeBetween(first.variant(), origin.getId(), interchange.getId()));
+                    for (VariantPath second : variants) {
+                        if (sameService(first.variant(), second.variant())) {
+                            continue;
+                        }
+                        int secondTransferIndex = indexOfStop(second.stops(), interchange.getId(), 0);
+                        if (secondTransferIndex < 0
+                                || secondTransferIndex >= second.stops().size() - 1) {
+                            continue;
+                        }
+                        int destinationIndex = indexOfStop(
+                                second.stops(), destination.getId(), secondTransferIndex + 1);
+                        if (destinationIndex < 0) {
+                            continue;
+                        }
+
+                        LocalDateTime secondDeparture = findNextDeparture(schedule,
+                                second.variant(), interchange.getId(), interchangeArrival);
+                        if (secondDeparture == null) {
+                            continue;
+                        }
+                        LocalDateTime arrival = secondDeparture.plusSeconds(
+                                travelTimeBetween(second.variant(), interchange.getId(),
+                                        destination.getId()));
+                        List<Stop> firstLegStops = List.copyOf(
+                                first.stops().subList(originIndex, transferIndex + 1));
+                        List<Stop> secondLegStops = new ArrayList<>(
+                                second.stops().subList(secondTransferIndex, destinationIndex + 1));
+                        secondLegStops.set(0, interchange);
+                        routes.add(new ScheduledRoute(1, List.of(
+                                new ScheduledLeg(new RouteLeg(first.variant().getLineNumber(),
+                                        first.variant().getDirectionName(), firstLegStops),
+                                        firstDeparture, interchangeArrival),
+                                new ScheduledLeg(new RouteLeg(second.variant().getLineNumber(),
+                                        second.variant().getDirectionName(), secondLegStops),
+                                        secondDeparture, arrival)
+                        )));
+                    }
+                }
+            }
+        }
+        return sortedByArrival(routes);
     }
 
     /**
@@ -248,6 +369,78 @@ public class RoutingEngine {
                 .toList();
     }
 
+    private static List<Stop> validOrderedStops(RouteVariant variant) {
+        if (variant == null || variant.getLineNumber() == null || variant.getLineNumber().isBlank()
+                || variant.getRouteStops() == null) {
+            return List.of();
+        }
+        return orderedStops(variant);
+    }
+
+    private static boolean hasDistinctStops(Stop origin, Stop destination) {
+        return hasStopId(origin) && hasStopId(destination)
+                && !origin.getId().equals(destination.getId());
+    }
+
+    private static void validateScheduleQuery(LocalDateTime departureDateTime,
+                                              ScheduleRepository schedule) {
+        java.util.Objects.requireNonNull(departureDateTime, "departureDateTime");
+        java.util.Objects.requireNonNull(schedule, "schedule");
+    }
+
+    private static LocalDateTime findNextDeparture(ScheduleRepository schedule, RouteVariant variant,
+                                                   String stopId, LocalDateTime earliest) {
+        for (int dayOffset = 0; dayOffset <= 7; dayOffset++) {
+            LocalDate date = earliest.toLocalDate().plusDays(dayOffset);
+            DayType dayType = dayTypeFor(date);
+            LocalTime earliestTime = dayOffset == 0 ? earliest.toLocalTime() : LocalTime.MIN;
+            Optional<Departure> nextDeparture = schedule.getDeparturesForLineAndStop(
+                            variant.getLineNumber(), stopId)
+                    .stream()
+                    .filter(departure -> departure.getDepartureTime() != null
+                            && departure.getDayType() == dayType
+                            && (departure.getTripId() == null
+                            || departure.getTripId().equals(variant.getId()))
+                            && !departure.getDepartureTime().isBefore(earliestTime))
+                    .min(Comparator.comparing(Departure::getDepartureTime));
+            if (nextDeparture.isPresent()) {
+                return LocalDateTime.of(date, nextDeparture.get().getDepartureTime());
+            }
+        }
+        return null;
+    }
+
+    private static DayType dayTypeFor(LocalDate date) {
+        return switch (date.getDayOfWeek()) {
+            case SATURDAY -> DayType.SATURDAY;
+            case SUNDAY -> DayType.SUNDAY;
+            default -> DayType.WEEKDAY;
+        };
+    }
+
+    private static int travelTimeBetween(RouteVariant variant, String fromStopId, String toStopId) {
+        return Math.max(0, travelTimeFromVariantStart(variant, toStopId)
+                - travelTimeFromVariantStart(variant, fromStopId));
+    }
+
+    private static int travelTimeFromVariantStart(RouteVariant variant, String stopId) {
+        return variant.getRouteStops().stream()
+                .filter(routeStop -> routeStop != null && hasStopId(routeStop.getStop())
+                        && stopId.equals(routeStop.getStop().getId()))
+                .min(Comparator.comparingInt(RouteStop::getSequenceOrder))
+                .map(RouteStop::getTravelTimeFromStartSec)
+                .orElse(0);
+    }
+
+    private static List<ScheduledRoute> sortedByArrival(List<ScheduledRoute> routes) {
+        return routes.stream()
+                .sorted(Comparator.comparing(ScheduledRoute::arrivalDateTime)
+                .thenComparing(ScheduledRoute::departureDateTime)
+                .thenComparingInt(ScheduledRoute::transfers))
+                .distinct()
+                .toList();
+    }
+
     private static boolean sameService(RouteVariant first, RouteVariant second) {
         return first.getLineNumber().equals(second.getLineNumber())
                 && java.util.Objects.equals(first.getDirectionName(), second.getDirectionName());
@@ -324,6 +517,27 @@ public class RoutingEngine {
         public RouteLeg {
             stops = List.copyOf(stops);
         }
+    }
+
+    public record ScheduledRoute(int transfers, List<ScheduledLeg> legs) {
+        public ScheduledRoute {
+            legs = List.copyOf(legs);
+            if (legs.isEmpty()) {
+                throw new IllegalArgumentException("Zaplanowana trasa musi zawierać co najmniej jeden odcinek.");
+            }
+        }
+
+        public LocalDateTime departureDateTime() {
+            return legs.getFirst().departureDateTime();
+        }
+
+        public LocalDateTime arrivalDateTime() {
+            return legs.getLast().arrivalDateTime();
+        }
+    }
+
+    public record ScheduledLeg(RouteLeg route, LocalDateTime departureDateTime,
+                               LocalDateTime arrivalDateTime) {
     }
 
     private record Connection(Stop from, Stop to, RouteVariant routeVariant) {

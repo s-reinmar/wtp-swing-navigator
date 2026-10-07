@@ -6,6 +6,7 @@ import java.time.LocalTime;
  * Klasa domenowa reprezentująca rozkładowy odjazd pojazdu z przystanku.
  */
 public class Departure implements java.io.Serializable {
+    private String tripId;             // Identyfikator kursu GTFS
     private Line line;               // Linia komunikacyjna
     private Stop stop;               // Przystanek
     private LocalTime departureTime; // Godzina odjazdu
@@ -13,11 +14,21 @@ public class Departure implements java.io.Serializable {
     private String brigade;          // Numer brygady (np. 04)
 
     public Departure(Line line, Stop stop, LocalTime departureTime, DayType dayType, String brigade) {
+        this(null, line, stop, departureTime, dayType, brigade);
+    }
+
+    public Departure(String tripId, Line line, Stop stop, LocalTime departureTime,
+                     DayType dayType, String brigade) {
+        this.tripId = tripId;
         this.line = line;
         this.stop = stop;
         this.departureTime = departureTime;
         this.dayType = dayType;
         this.brigade = brigade;
+    }
+
+    public String getTripId() {
+        return tripId;
     }
 
     public Line getLine() {

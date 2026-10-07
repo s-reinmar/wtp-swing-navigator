@@ -22,6 +22,7 @@ public class ScheduleRepository implements java.io.Serializable {
     private final Map<String, List<Stop>> stopsByName = new ConcurrentHashMap<>();
 
     private final Map<String, Line> linesByNumber = new ConcurrentHashMap<>();
+    private final Map<String, Line> linesByRouteId = new ConcurrentHashMap<>();
 
     // Indeksy odjazdów
     private final Map<String, List<Departure>> departuresByStopId = new ConcurrentHashMap<>();
@@ -72,8 +73,19 @@ public class ScheduleRepository implements java.io.Serializable {
         }
     }
 
+    public void addLine(String routeId, Line line) {
+        addLine(line);
+        if (routeId != null && line != null) {
+            linesByRouteId.put(routeId, line);
+        }
+    }
+
     public Line findLineByNumber(String lineNumber) {
         return linesByNumber.get(lineNumber);
+    }
+
+    public Line findLineByRouteId(String routeId) {
+        return linesByRouteId.get(routeId);
     }
 
     /**
