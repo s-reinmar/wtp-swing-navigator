@@ -12,39 +12,67 @@ import java.util.stream.Collectors;
 
 /**
  * Pamięciowy magazyn danych (Repository) dla przystanków, linii oraz rozkładowych odjazdów.
- * Wykorzystuje bezpieczne współbieżnie mapy (ConcurrentHashMap) dla wątków tła i Swing EDT.
+ * Wykorzystuje struktury HashMap / ConcurrentHashMap dla szybkiego indeksowania i wyszukiwania po ID, kodzie i nazwie.
  */
 public class ScheduleRepository {
 
     // Indeksy w pamięci RAM
     private final Map<String, Stop> stopsById = new ConcurrentHashMap<>();
+    private final Map<String, Stop> stopsByCode = new ConcurrentHashMap<>();            // Indeksowanie po kodzie słupka (np. "01")
+    private final Map<String, List<Stop>> stopsByName = new ConcurrentHashMap<>();    // Indeksowanie po nazwie zespołu (np. "Centrum")
+
     private final Map<String, Line> linesByNumber = new ConcurrentHashMap<>();
     private final Map<String, List<Departure>> departuresByStopId = new ConcurrentHashMap<>();
 
     /**
-     * Dodaje przystanek do magazynu.
+     * Dodaje przystanek do magazynu i automatycznie buduje indeksy wyszukiwania.
      */
     public void addStop(Stop stop) {
-        if (stop != null && stop.getId() != null) {
-            stopsById.put(stop.getId(), stop);
+        if (stop != null) {
+            if (stop.getId() != null) {
+                stopsById.put(stop.getId(), stop);
+            }
+            if (stop.getCode() != null) {
+                stopsByCode.put(stop.getCode(), stop);
+            }
+            if (stop.getName() != null) {
+                String normalizedName = stop.getName().toLowerCase().trim();
+                stopsByName.computeIfAbsent(normalizedName, k -> new ArrayList<>()).add(stop);
+            }
         }
     }
 
     /**
-     * Wyszukuje przystanek po unikalnym identyfikatorze
+     * Wyszukuje przystanek po unikalnym identyfikatorze[cite: 13].
      */
     public Stop findStopById(String id) {
         return stopsById.get(id);
     }
 
     /**
-     * Wyszukuje przystanki pasujące nazwą zespołu przystankowego (np. "Centrum")
+     * Wyszukuje przystanek bezpośrednio po kodzie słupka w strukturze HashMap.
+     */
+    public Stop findStopByCode(String code) {
+        return stopsByCode.get(code);
+    }
+
+    /**
+     * Wyszukuje przystanki pasujące nazwą zespołu przystankowego (np. "Centrum").
+     * Wykorzystuje szybki lookup po mapie lub dopasowanie podciągów.
      */
     public List<Stop> findStopsByName(String name) {
         if (name == null || name.isBlank()) {
             return List.of();
         }
         String search = name.toLowerCase().trim();
+
+        // Sprawdź dokładne trafienie w indeksie nazw
+        List<Stop> exactMatches = stopsByName.get(search);
+        if (exactMatches != null && !exactMatches.isEmpty()) {
+            return new ArrayList<>(exactMatches);
+        }
+
+        // Wyszukiwanie częściowe (zawierające frazę)
         return stopsById.values().stream()
                 .filter(s -> s.getName() != null && s.getName().toLowerCase().contains(search))
                 .collect(Collectors.toList());
