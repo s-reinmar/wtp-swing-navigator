@@ -7,9 +7,9 @@ import javax.swing.*;
 import java.awt.*;
 
 /**
- * Główne okno aplikacji Swing/AWT reprezentujące widok nawigacyjny WTP Warszawa[cite: 3].
+ * Główne okno aplikacji Swing/AWT reprezentujące widok nawigacyjny WTP Warszawa.
  * Wykorzystuje zarządcę układu BorderLayout do podziału widoku na panel boczny (WEST)
- * oraz centralny panel mapy OpenStreetMap (CENTER)[cite: 2, 3].
+ * oraz centralny panel mapy OpenStreetMap (CENTER).
  */
 public class MainFrame extends JFrame {
 
@@ -25,7 +25,7 @@ public class MainFrame extends JFrame {
     private JLabel statusLabel;
 
     /**
-     * Konstruktor tworzący główne okno aplikacji z ukierunkowanym układem BorderLayout[cite: 2, 3].
+     * Konstruktor tworzący główne okno aplikacji z ukierunkowanym układem BorderLayout.
      */
     public MainFrame() {
         super(APP_TITLE);
@@ -44,17 +44,17 @@ public class MainFrame extends JFrame {
         setMinimumSize(new Dimension(1024, 600));
         setLocationRelativeTo(null);
 
-        // Ustawienie głównego zarządcy układu na BorderLayout[cite: 2, 3]
+        // Ustawienie głównego zarządcy układu na BorderLayout
         setLayout(new BorderLayout(4, 4));
     }
 
     /**
-     * KROK 50: Skonfigurowanie podziału okna za pomocą układu BorderLayout[cite: 2].
+     * KROK 50: Skonfigurowanie podziału okna za pomocą układu BorderLayout.
      */
     private void setupBorderLayoutContainers() {
         logger.info("Konfigurowanie stref BorderLayout: WEST (panel sterowania), CENTER (mapa), SOUTH (pasek stanu)...");
 
-        // 1. PANEL BOCZNY (STEROWANIE) - Zmieszczony w sekcji WEST[cite: 2, 3]
+        // 1. PANEL BOCZNY (STEROWANIE) - Zmieszczony w sekcji WEST
         sidebarPanel = new JPanel();
         sidebarPanel.setLayout(new BoxLayout(sidebarPanel, BoxLayout.Y_AXIS));
         sidebarPanel.setPreferredSize(new Dimension(340, 0));
@@ -63,24 +63,24 @@ public class MainFrame extends JFrame {
                 BorderFactory.createEmptyBorder(8, 8, 8, 8)
         ));
 
-        // Placeholder dla przyszłego panelu wyszukiwania / tablicy odjazdów (SidebarPanel / DepartureBoardPanel)[cite: 2, 3]
+        // Placeholder dla przyszłego panelu wyszukiwania / tablicy odjazdów (SidebarPanel / DepartureBoardPanel)
         JLabel sidebarPlaceholder = new JLabel("<html><b>Panel Sterowania WTP</b><br/>(Wyszukiwarka i Tablica Odjazdów)</html>");
         sidebarPanel.add(sidebarPlaceholder);
 
         add(sidebarPanel, BorderLayout.WEST);
 
-        // 2. PANEL CENTRALNY (MAPA) - Zmieszczony w sekcji CENTER[cite: 2, 3]
+        // 2. PANEL CENTRALNY (MAPA) - Zmieszczony w sekcji CENTER
         mapPanel = new JPanel(new BorderLayout());
         mapPanel.setBackground(new Color(235, 235, 235));
 
-        // Placeholder pod docelowy komponent MapPanel (JXMapViewer2)[cite: 2, 3]
+        // Placeholder pod docelowy komponent MapPanel (JXMapViewer2)
         JLabel mapPlaceholder = new JLabel("Komponent Mapy OpenStreetMap (JXMapViewer2)", SwingConstants.CENTER);
         mapPlaceholder.setFont(new Font("SansSerif", Font.BOLD, 14));
         mapPanel.add(mapPlaceholder, BorderLayout.CENTER);
 
         add(mapPanel, BorderLayout.CENTER);
 
-        // 3. PASZEK STATUSU (DOLNY) - Zmieszczony w sekcji SOUTH[cite: 2, 3]
+        // 3. PASZEK STATUSU (DOLNY) - Zmieszczony w sekcji SOUTH
         statusBarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
         statusBarPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY));
 
@@ -96,7 +96,7 @@ public class MainFrame extends JFrame {
     /**
      * Podmienia centralny panel mapy na właściwą instancję MapPanel.
      *
-     * @param newMapPanel dedykowany panel z mapą JXMapViewer2[cite: 2, 3]
+     * @param newMapPanel dedykowany panel z mapą JXMapViewer2
      */
     public void setMapPanel(JPanel newMapPanel) {
         if (this.mapPanel != null) {
@@ -111,7 +111,7 @@ public class MainFrame extends JFrame {
     /**
      * Podmienia boczny panel sterowania na właściwy panel z wyszukiwarką/odjazdami.
      *
-     * @param newSidebarPanel dedykowany panel boczny sterowania[cite: 2, 3]
+     * @param newSidebarPanel dedykowany panel boczny sterowania
      */
     public void setSidebarPanel(JPanel newSidebarPanel) {
         if (this.sidebarPanel != null) {
