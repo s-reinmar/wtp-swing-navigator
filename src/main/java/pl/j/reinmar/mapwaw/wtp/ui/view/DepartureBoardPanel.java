@@ -75,7 +75,6 @@ public class DepartureBoardPanel extends JPanel {
         topHeaderPart.add(stopHeaderLabel, BorderLayout.CENTER);
 
         JButton clearButton = new JButton("Wyczyść / Powrót");
-        clearButton.setFocusable(false);
         clearButton.addActionListener(e -> {
             if (mapController != null) mapController.clearSelection();
         });
@@ -103,7 +102,9 @@ public class DepartureBoardPanel extends JPanel {
         // Sortowanie (Krok 77)
         sortComboBox = new JComboBox<>(SortOption.values());
         sortComboBox.addActionListener(filterListener);
-        filterPanel.add(new JLabel("Sortuj:"));
+        JLabel sortLabel = new JLabel("Sortuj:");
+        sortLabel.setLabelFor(sortComboBox);
+        filterPanel.add(sortLabel);
         filterPanel.add(sortComboBox);
         headerPanel.add(filterPanel, BorderLayout.SOUTH);
 
@@ -118,6 +119,13 @@ public class DepartureBoardPanel extends JPanel {
         departureTable = new JTable(tableModel);
         departureTable.setRowHeight(28);
         departureTable.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        departureTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        departureTable.setRowSelectionAllowed(true);
+        departureTable.setColumnSelectionAllowed(false);
+        departureTable.getAccessibleContext().setAccessibleName("Tablica odjazdów");
+        departureTable.getAccessibleContext().setAccessibleDescription(
+                "Lista odjazdów z kierunkiem, czasem rozkładowym, estymacją GPS i opóźnieniem."
+        );
         departureTable.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
         departureTable.getTableHeader().setReorderingAllowed(false);
         setupTableColumns();
