@@ -166,4 +166,33 @@ public class WtpRealtimeApiClient {
     public CompletableFuture<String> fetchBusPositionsAsync() {
         return fetchRawVehicleDataAsync(1);
     }
+
+    /**
+     * Pobiera pozycje GPS wszystkich aktywnych tramwajów (type = 2) w czasie rzeczywistym (synchronicznie).
+     *
+     * @return surowy ciąg znaków w formacie JSON z odpowiedzią API ZTM
+     */
+    public String fetchTramPositions() {
+        return fetchTramPositions(null);
+    }
+
+    /**
+     * Pobiera pozycje GPS tramwajów dla wybranej linii transportowej (type = 2).
+     *
+     * @param lineNumber numer linii tramwajowej (np. "17", "9", "33")
+     * @return surowy ciąg znaków w formacie JSON z odpowiedzią API ZTM
+     */
+    public String fetchTramPositions(String lineNumber) {
+        // type = 2 oznacza pojazdy typu TRAM (tramwaje)
+        return fetchRawVehicleData(2, lineNumber);
+    }
+
+    /**
+     * Asynchronicznie pobiera pozycje GPS wszystkich aktywnych tramwajów (type = 2).
+     *
+     * @return CompletableFuture zawierający odpowiedź JSON
+     */
+    public CompletableFuture<String> fetchTramPositionsAsync() {
+        return fetchRawVehicleDataAsync(2);
+    }
 }
