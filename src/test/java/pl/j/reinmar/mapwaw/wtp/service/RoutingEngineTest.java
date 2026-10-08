@@ -42,6 +42,8 @@ class RoutingEngineTest {
                 routes.getFirst().departureDateTime());
         assertEquals(LocalDateTime.of(2026, 10, 5, 8, 55),
                 routes.getFirst().arrivalDateTime());
+        assertEquals(Duration.ofMinutes(10), routes.getFirst().totalTravelTime());
+        assertEquals(2, routes.getFirst().numberOfStops());
     }
 
     @Test
@@ -72,6 +74,8 @@ class RoutingEngineTest {
                 route.legs().getLast().departureDateTime());
         assertEquals(LocalDateTime.of(2026, 10, 5, 9, 15), route.arrivalDateTime());
         assertEquals(Duration.ofMinutes(10), route.totalTransferWaitingTime());
+        assertEquals(Duration.ofMinutes(30), route.totalTravelTime());
+        assertEquals(3, route.numberOfStops());
     }
 
     @Test
@@ -103,6 +107,8 @@ class RoutingEngineTest {
         assertEquals(List.of("B2", "C"), stopIds(route.legs().getLast().route().stops()));
         assertEquals(Duration.ofSeconds(75), route.totalWalkingTransferTime());
         assertEquals(LocalDateTime.of(2026, 10, 5, 9, 7), route.arrivalDateTime());
+        assertEquals(Duration.ofMinutes(22), route.totalTravelTime());
+        assertEquals(4, route.numberOfStops());
     }
 
     @Test
@@ -293,6 +299,7 @@ class RoutingEngineTest {
 
         assertEquals(1, route.transfers());
         assertEquals(2, route.legs().size());
+        assertEquals(3, route.numberOfStops());
         assertEquals("17", route.legs().get(0).lineNumber());
         assertEquals(List.of("A", "B"), stopIds(route.legs().get(0).stops()));
         assertEquals("Dworzec", route.legs().get(0).directionName());

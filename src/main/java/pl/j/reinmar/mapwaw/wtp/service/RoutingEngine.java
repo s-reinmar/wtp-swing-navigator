@@ -512,6 +512,24 @@ public class RoutingEngine {
         return route.legs().stream().mapToInt(leg -> leg.stops().size() - 1).sum();
     }
 
+    private static int countStops(List<RouteLeg> legs) {
+        int stopCount = 0;
+        String previousLegLastStopId = null;
+        for (RouteLeg leg : legs) {
+            List<Stop> stops = leg.stops();
+            int firstStopIndex = 0;
+            if (previousLegLastStopId != null && !stops.isEmpty()) {
+                Stop firstStop = stops.getFirst();
+                if (previousLegLastStopId.equals(firstStop.getId())) {
+                    firstStopIndex = 1;
+                }
+            }
+            stopCount += stops.size() - firstStopIndex;
+            previousLegLastStopId = stops.isEmpty() ? null : stops.getLast().getId();
+        }
+        return stopCount;
+    }
+
     private List<Connection> reconstructPath(State start, State target,
                                               Map<State, Previous> previousStates) {
         List<Connection> path = new ArrayList<>();
@@ -564,6 +582,10 @@ public class RoutingEngine {
         public RouteResult {
             legs = List.copyOf(legs);
         }
+
+        public int numberOfStops() {
+            return countStops(legs);
+        }
     }
 
     public record RouteLeg(String lineNumber, String directionName, List<Stop> stops) {
@@ -586,6 +608,16 @@ public class RoutingEngine {
 
         public LocalDateTime arrivalDateTime() {
             return legs.getLast().arrivalDateTime();
+        }
+
+        /** Zwraca czas od pierwszego odjazdu do przyjazdu na przystanek końcowy. */
+        public Duration totalTravelTime() {
+            return Duration.between(departureDateTime(), arrivalDateTime());
+        }
+
+        /** Zwraca liczbę odwiedzonych przystanków, nie licząc dwukrotnie wspólnego węzła przesiadki. */
+        public int numberOfStops() {
+            return countStops(legs.stream().map(ScheduledLeg::route).toList());
         }
 
         /** Zwraca łączny czas oczekiwania między kolejnymi odcinkami trasy. */
