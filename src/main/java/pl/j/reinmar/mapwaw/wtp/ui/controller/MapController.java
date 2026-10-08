@@ -32,6 +32,26 @@ public class MapController {
     private volatile MapPanel mapPanel;
 
     private volatile Stop currentlySelectedStop;
+    private volatile boolean offlineMode;
+
+    /**
+     * Przełącza tryb offline: tablica odjazdów pokazuje wyłącznie dane z rozkładu statycznego.
+     */
+    public void setOfflineMode(boolean offline) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> setOfflineMode(offline));
+            return;
+        }
+        if (this.offlineMode != offline) {
+            this.offlineMode = offline;
+            logger.info("Tryb offline: {}", offline ? "włączony (rozkład statyczny)" : "wyłączony");
+            refreshDepartureBoard();
+        }
+    }
+
+    public boolean isOfflineMode() {
+        return offlineMode;
+    }
 
     public MapController(DepartureBoardPanel departureBoardPanel,
                          ScheduleRepository scheduleRepository,
@@ -184,6 +204,10 @@ public class MapController {
         int delaySec = 0;
 
         LocalTime estimatedTime = (dep.getDepartureTime() != null) ? dep.getDepartureTime().plusSeconds(delaySec) : now;
+
+        if (offlineMode) {
+            return new DepartureRow(line, direction, scheduledTime, "-", "rozkład");
+        }
 
         return new DepartureRow(line, direction, scheduledTime, estimatedTime.format(TIME_FORMATTER), formatDelay(delaySec));
     }

@@ -2,6 +2,7 @@ package pl.j.reinmar.mapwaw.wtp;
 
 import com.formdev.flatlaf.FlatLightLaf;
 import pl.j.reinmar.mapwaw.wtp.repository.RealtimeVehicleCache;
+import pl.j.reinmar.mapwaw.wtp.repository.ScheduleCacheManager;
 import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
 import pl.j.reinmar.mapwaw.wtp.service.DelayCalculatorService;
 import pl.j.reinmar.mapwaw.wtp.service.RealtimeFetchScheduler;
@@ -39,10 +40,14 @@ public class MainApp {
             MainFrame frame = new MainFrame();
             frame.setMapPanel(createPlaceholderPanel());
 
+            ScheduleRepository cachedRepository = ScheduleCacheManager.loadCache();
+            ScheduleRepository scheduleRepository =
+                    cachedRepository != null ? cachedRepository : new ScheduleRepository();
+
             RealtimeFetchScheduler realtimeScheduler = new RealtimeFetchScheduler(
                     new WtpRealtimeApiClient(),
                     new RealtimeVehicleCache(),
-                    new DelayCalculatorService(new ScheduleRepository()));
+                    new DelayCalculatorService(scheduleRepository));
             realtimeScheduler.setConnectionStatusCallback(frame::setGpsApiConnected);
 
             frame.setVisible(true);

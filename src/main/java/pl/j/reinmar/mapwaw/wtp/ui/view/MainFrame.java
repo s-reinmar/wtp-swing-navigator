@@ -85,7 +85,7 @@ public class MainFrame extends JFrame {
         statusBarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
         statusBarPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY));
 
-        gpsApiStatusLabel = new JLabel("API GPS: brak połączenia",
+        gpsApiStatusLabel = new JLabel("API GPS: tryb offline",
                 new ConnectionStatusIcon(false), SwingConstants.LEFT);
         gpsApiStatusLabel.setIconTextGap(6);
         gpsApiStatusLabel.setForeground(new Color(160, 35, 35));
@@ -153,15 +153,18 @@ public class MainFrame extends JFrame {
 
     public void setGpsApiConnected(boolean connected) {
         Runnable update = () -> {
-            String status = connected ? "API GPS: połączono" : "API GPS: brak połączenia";
+            String status = connected ? "API GPS: połączono" : "API GPS: tryb offline";
             gpsApiStatusLabel.setText(status);
             gpsApiStatusLabel.setIcon(new ConnectionStatusIcon(connected));
             gpsApiStatusLabel.setForeground(connected
                     ? new Color(0, 120, 45) : new Color(160, 35, 35));
             gpsApiStatusLabel.setToolTipText(connected
                     ? "Ostatnie pobranie danych z API GPS zakończyło się powodzeniem."
-                    : "Nie udało się pobrać danych z API GPS.");
+                    : "Brak połączenia z API GPS. Aplikacja działa na rozkładach statycznych.");
             gpsApiStatusLabel.getAccessibleContext().setAccessibleDescription(status);
+            statusLabel.setText(connected
+                    ? "Połączono. Wyświetlane są pozycje pojazdów na żywo."
+                    : "Tryb offline: dostępne są tylko rozkłady statyczne (bez pozycji pojazdów na żywo).");
         };
         if (SwingUtilities.isEventDispatchThread()) {
             update.run();

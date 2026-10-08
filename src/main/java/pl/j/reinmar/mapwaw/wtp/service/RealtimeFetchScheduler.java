@@ -205,6 +205,13 @@ public class RealtimeFetchScheduler {
     private synchronized void notifyConnectionState(boolean isConnected) {
         if (lastConnectionState == null || lastConnectionState != isConnected) {
             this.lastConnectionState = isConnected;
+            if (!isConnected) {
+                vehicleCache.clear();
+                Runnable refresh = uiRefreshCallback;
+                if (refresh != null) {
+                    SwingUtilities.invokeLater(refresh);
+                }
+            }
             Consumer<Boolean> callback = connectionStatusCallback;
             if (callback != null) {
                 SwingUtilities.invokeLater(() -> callback.accept(isConnected));
