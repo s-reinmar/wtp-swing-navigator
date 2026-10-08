@@ -59,7 +59,7 @@ public class MapPanel extends JPanel {
     private Painter<JXMapViewer> baseOverlayPainter;
     private Painter<? super JXMapViewer> additionalOverlayPainter;
 
-    private RealtimeVehicleCache vehicleCache;
+    private volatile RealtimeVehicleCache vehicleCache;
     private Consumer<Waypoint> onStopSelectedListener;
 
     public MapPanel() {
@@ -112,6 +112,10 @@ public class MapPanel extends JPanel {
     }
 
     public void setVehicleCache(RealtimeVehicleCache vehicleCache) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> setVehicleCache(vehicleCache));
+            return;
+        }
         this.vehicleCache = vehicleCache;
     }
 
@@ -209,7 +213,7 @@ public class MapPanel extends JPanel {
         private static final Color ENDPOINT_COLOR = new Color(24, 130, 65);
         private static final Color TRANSFER_COLOR = new Color(235, 145, 20);
         private static final int ENDPOINT_RADIUS = 8;
-        private RoutingEngine.ScheduledRoute route;
+        private volatile RoutingEngine.ScheduledRoute route;
 
         private void setRoute(RoutingEngine.ScheduledRoute route) {
             this.route = route;
@@ -451,25 +455,47 @@ public class MapPanel extends JPanel {
     }
 
     public void setOnStopSelectedListener(Consumer<Waypoint> listener) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> setOnStopSelectedListener(listener));
+            return;
+        }
         this.onStopSelectedListener = listener;
     }
 
     public void setWaypoints(Collection<? extends Waypoint> newWaypoints) {
-        this.waypoints.clear();
+        Set<Waypoint> snapshot = new HashSet<>();
         if (newWaypoints != null) {
-            this.waypoints.addAll(newWaypoints);
+            snapshot.addAll(newWaypoints);
         }
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> replaceWaypoints(snapshot));
+            return;
+        }
+        replaceWaypoints(snapshot);
+    }
+
+    private void replaceWaypoints(Set<Waypoint> newWaypoints) {
+        this.waypoints.clear();
+        this.waypoints.addAll(newWaypoints);
         this.waypointPainter.setWaypoints(this.waypoints);
         this.mapViewer.repaint();
     }
 
     public void addWaypoint(double latitude, double longitude) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> addWaypoint(latitude, longitude));
+            return;
+        }
         this.waypoints.add(new DefaultWaypoint(new GeoPosition(latitude, longitude)));
         this.waypointPainter.setWaypoints(this.waypoints);
         this.mapViewer.repaint();
     }
 
     public void clearWaypoints() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::clearWaypoints);
+            return;
+        }
         this.waypoints.clear();
         this.waypointPainter.setWaypoints(this.waypoints);
         this.mapViewer.repaint();

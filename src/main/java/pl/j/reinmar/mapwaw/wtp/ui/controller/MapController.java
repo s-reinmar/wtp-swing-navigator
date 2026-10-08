@@ -29,9 +29,9 @@ public class MapController {
     private final DepartureBoardPanel departureBoardPanel;
     private final ScheduleRepository scheduleRepository;
     private final DelayCalculatorService delayCalculatorService;
-    private MapPanel mapPanel;
+    private volatile MapPanel mapPanel;
 
-    private Stop currentlySelectedStop;
+    private volatile Stop currentlySelectedStop;
 
     public MapController(DepartureBoardPanel departureBoardPanel,
                          ScheduleRepository scheduleRepository,
@@ -42,10 +42,18 @@ public class MapController {
     }
 
     public void setMapPanel(MapPanel mapPanel) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> setMapPanel(mapPanel));
+            return;
+        }
         this.mapPanel = mapPanel;
     }
 
     public void onStopSelectedOnMap(Stop selectedStop) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> onStopSelectedOnMap(selectedStop));
+            return;
+        }
         if (selectedStop == null) {
             logger.warn("Otrzymano puste zdarzenie wyboru przystanku z mapy.");
             return;
@@ -65,6 +73,10 @@ public class MapController {
     }
 
     public void clearSelection() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::clearSelection);
+            return;
+        }
         this.currentlySelectedStop = null;
         departureBoardPanel.setStopHeader("Wybierz przystanek z mapy...");
         departureBoardPanel.getTableModel().clear();
@@ -81,45 +93,43 @@ public class MapController {
     }
 
     public void refreshDepartureBoard() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::refreshDepartureBoard);
+            return;
+        }
         if (currentlySelectedStop == null) {
             departureBoardPanel.showEmptyMessage("Wybierz przystanek z mapy, aby zobaczyć odjazdy.");
             return;
         }
 
-        SwingUtilities.invokeLater(() -> {
-            LocalTime now = LocalTime.now();
+        Stop selectedStop = currentlySelectedStop;
+        LocalTime now = LocalTime.now();
 
-            // Pobranie odjazdów. Jeśli metoda findNextDepartures z limitami nie istnieje w Twoim repozytorium,
-            // używamy domyślnej getDeparturesForStop (jak miałeś w oryginalnym kodzie)
-            List<Departure> departures = scheduleRepository.getDeparturesForStop(currentlySelectedStop.getId());
+        List<Departure> departures = scheduleRepository.getDeparturesForStop(selectedStop.getId());
 
-            // KROK 76: Jeśli baza nie zwróciła w ogóle odjazdów
-            if (departures == null || departures.isEmpty()) {
-                departureBoardPanel.getTableModel().clear();
-                departureBoardPanel.showEmptyMessage("Brak zaplanowanych odjazdów w najbliższym czasie.");
-                return;
-            }
+        if (departures == null || departures.isEmpty()) {
+            departureBoardPanel.getTableModel().clear();
+            departureBoardPanel.showEmptyMessage("Brak zaplanowanych odjazdów w najbliższym czasie.");
+            return;
+        }
 
-            boolean showBuses = departureBoardPanel.isBusFilterActive();
-            boolean showTrams = departureBoardPanel.isTramFilterActive();
-            boolean showMetro = departureBoardPanel.isMetroFilterActive();
+        boolean showBuses = departureBoardPanel.isBusFilterActive();
+        boolean showTrams = departureBoardPanel.isTramFilterActive();
+        boolean showMetro = departureBoardPanel.isMetroFilterActive();
 
-            List<DepartureRow> rows = departures.stream()
-                    .filter(dep -> isTransportTypeAllowed(dep, showBuses, showTrams, showMetro))
-                    .sorted(getDepartureComparator(departureBoardPanel.getSelectedSortOption()))
-                    .map(dep -> mapToDepartureRow(dep, now))
-                    .collect(Collectors.toList());
+        List<DepartureRow> rows = departures.stream()
+                .filter(dep -> isTransportTypeAllowed(dep, showBuses, showTrams, showMetro))
+                .sorted(getDepartureComparator(departureBoardPanel.getSelectedSortOption()))
+                .map(dep -> mapToDepartureRow(dep, selectedStop, now))
+                .collect(Collectors.toList());
 
-            // KROK 76: Jeśli odjazdy są, ale wszystkie zostały odfiltrowane przez checkboxy
-            if (rows.isEmpty()) {
-                departureBoardPanel.getTableModel().clear();
-                departureBoardPanel.showEmptyMessage("Brak odjazdów pasujących do wybranych filtrów.");
-            } else {
-                // Przywrócenie widoku tabeli i zasilenie nowymi danymi
-                departureBoardPanel.showTable();
-                departureBoardPanel.getTableModel().setDepartures(rows);
-            }
-        });
+        if (rows.isEmpty()) {
+            departureBoardPanel.getTableModel().clear();
+            departureBoardPanel.showEmptyMessage("Brak odjazdów pasujących do wybranych filtrów.");
+        } else {
+            departureBoardPanel.showTable();
+            departureBoardPanel.getTableModel().setDepartures(rows);
+        }
     }
 
     private Comparator<Departure> getDepartureComparator(DepartureBoardPanel.SortOption option) {
@@ -160,12 +170,12 @@ public class MapController {
         return false;
     }
 
-    private DepartureRow mapToDepartureRow(Departure dep, LocalTime now) {
+    private DepartureRow mapToDepartureRow(Departure dep, Stop selectedStop, LocalTime now) {
         String line = (dep.getLine() != null && dep.getLine().getLineNumber() != null)
                 ? dep.getLine().getLineNumber() : "-";
 
         // Jeśli obiekt Departure nie posiada metody getDirection(), używamy nazwy przystanku docelowego
-        String direction = currentlySelectedStop.getName() != null ? currentlySelectedStop.getName() : "Nieznany";
+        String direction = selectedStop.getName() != null ? selectedStop.getName() : "Nieznany";
 
         String scheduledTime = (dep.getDepartureTime() != null) ? dep.getDepartureTime().format(TIME_FORMATTER) : "-";
 

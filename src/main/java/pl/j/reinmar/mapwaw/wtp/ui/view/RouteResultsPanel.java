@@ -66,7 +66,16 @@ public class RouteResultsPanel extends JPanel {
     }
 
     public void setRoutes(List<RoutingEngine.ScheduledRoute> routes) {
-        Objects.requireNonNull(routes, "routes");
+        List<RoutingEngine.ScheduledRoute> snapshot = List.copyOf(
+                Objects.requireNonNull(routes, "routes"));
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> setRoutesOnEdt(snapshot));
+            return;
+        }
+        setRoutesOnEdt(snapshot);
+    }
+
+    private void setRoutesOnEdt(List<RoutingEngine.ScheduledRoute> routes) {
         routeList.clearSelection();
         listModel.clear();
         routes.forEach(route -> listModel.addElement(
@@ -104,6 +113,10 @@ public class RouteResultsPanel extends JPanel {
     }
 
     public void clearSelection() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::clearSelection);
+            return;
+        }
         routeList.clearSelection();
         notifyRouteCleared();
     }

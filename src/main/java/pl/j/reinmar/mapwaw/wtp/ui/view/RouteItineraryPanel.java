@@ -33,6 +33,10 @@ public class RouteItineraryPanel extends JPanel {
     }
 
     public void setRoute(RoutingEngine.ScheduledRoute route) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> setRoute(route));
+            return;
+        }
         this.route = route;
         removeAll();
         if (route == null) {

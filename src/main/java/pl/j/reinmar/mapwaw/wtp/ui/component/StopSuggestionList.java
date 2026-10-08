@@ -4,6 +4,7 @@ import pl.j.reinmar.mapwaw.wtp.model.Stop;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -67,10 +68,11 @@ public class StopSuggestionList extends JList<Stop> {
      * @param stops lista przystanków do wyświetlenia
      */
     public void setSuggestions(List<Stop> stops) {
+        List<Stop> snapshot = stops == null ? null : new ArrayList<>(stops);
         SwingUtilities.invokeLater(() -> {
             listModel.clear();
-            if (stops != null) {
-                stops.forEach(listModel::addElement);
+            if (snapshot != null) {
+                snapshot.forEach(listModel::addElement);
                 if (!listModel.isEmpty()) {
                     setSelectedIndex(0);
                 }

@@ -99,6 +99,10 @@ public class MainFrame extends JFrame {
      * @param newMapPanel dedykowany panel z mapą JXMapViewer2
      */
     public void setMapPanel(JPanel newMapPanel) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> setMapPanel(newMapPanel));
+            return;
+        }
         if (this.mapPanel != null) {
             remove(this.mapPanel);
         }
@@ -114,6 +118,10 @@ public class MainFrame extends JFrame {
      * @param newSidebarPanel dedykowany panel boczny sterowania
      */
     public void setSidebarPanel(JPanel newSidebarPanel) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> setSidebarPanel(newSidebarPanel));
+            return;
+        }
         if (this.sidebarPanel != null) {
             remove(this.sidebarPanel);
         }

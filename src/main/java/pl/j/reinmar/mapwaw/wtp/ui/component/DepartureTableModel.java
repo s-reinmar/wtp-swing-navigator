@@ -110,11 +110,11 @@ public class DepartureTableModel extends AbstractTableModel {
      * Ta metoda naprawia błędy z brakiem "setRowCount" i "addRow".
      */
     public void setDepartures(List<DepartureRow> newDepartures) {
+        List<DepartureRow> snapshot = newDepartures == null
+                ? List.of() : new ArrayList<>(newDepartures);
         SwingUtilities.invokeLater(() -> {
             this.departures.clear();
-            if (newDepartures != null) {
-                this.departures.addAll(newDepartures);
-            }
+            this.departures.addAll(snapshot);
             fireTableDataChanged();
             logger.debug("Zaktualizowano tabelę odjazdów. Liczba wierszy: {}", departures.size());
         });
