@@ -10,6 +10,7 @@ import pl.j.reinmar.mapwaw.wtp.parser.GtfsScheduleLoader;
 import pl.j.reinmar.mapwaw.wtp.repository.RealtimeVehicleCache;
 import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
 import pl.j.reinmar.mapwaw.wtp.service.DelayCalculatorService;
+import pl.j.reinmar.mapwaw.wtp.service.OrsWalkingService;
 import pl.j.reinmar.mapwaw.wtp.service.RealtimeFetchScheduler;
 import pl.j.reinmar.mapwaw.wtp.service.RoutingEngine;
 import pl.j.reinmar.mapwaw.wtp.service.WtpRealtimeApiClient;
@@ -37,6 +38,7 @@ public class MainApp {
     private static final Logger logger = LoggerFactory.getLogger(MainApp.class);
     private static final String DEFAULT_DATA_DIR = "src/main/resources/data";
     private static final int STOP_ZOOM_LEVEL = 2;
+    private static final OrsWalkingService ORS_WALKING = new OrsWalkingService();
 
     /** Dane wczytane w tle, przekazywane do budowy interfejsu. */
     private record LoadedData(ScheduleRepository repository, RoutingEngine routingEngine) {
@@ -184,7 +186,9 @@ public class MainApp {
                         request.destination(), request.departureDateTime(), repository));
                 routes.sort(Comparator.comparing(RoutingEngine.ScheduledRoute::arrivalDateTime)
                         .thenComparingInt(RoutingEngine.ScheduledRoute::transfers));
-                return routes.size() > 20 ? new ArrayList<>(routes.subList(0, 20)) : routes;
+                List<RoutingEngine.ScheduledRoute> top = routes.size() > 20
+                        ? new ArrayList<>(routes.subList(0, 20)) : routes;
+                return top.stream().map(ORS_WALKING::enrich).toList();
             }
 
             @Override

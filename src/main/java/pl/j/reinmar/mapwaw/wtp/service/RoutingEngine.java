@@ -594,12 +594,27 @@ public class RoutingEngine {
         }
     }
 
-    public record ScheduledRoute(int transfers, List<ScheduledLeg> legs) {
+    /**
+     * @param measuredTransferWalks opcjonalne, zmierzone (np. przez OpenRouteService) czasy dojścia
+     *                              dla kolejnych przesiadek; pusta lista oznacza użycie oszacowania
+     */
+    public record ScheduledRoute(int transfers, List<ScheduledLeg> legs,
+                                 List<Duration> measuredTransferWalks) {
         public ScheduledRoute {
             legs = List.copyOf(legs);
+            measuredTransferWalks = measuredTransferWalks == null
+                    ? List.of() : List.copyOf(measuredTransferWalks);
             if (legs.isEmpty()) {
                 throw new IllegalArgumentException("Zaplanowana trasa musi zawierać co najmniej jeden odcinek.");
             }
+        }
+
+        public ScheduledRoute(int transfers, List<ScheduledLeg> legs) {
+            this(transfers, legs, List.of());
+        }
+
+        public ScheduledRoute withMeasuredTransferWalks(List<Duration> walks) {
+            return new ScheduledRoute(transfers, legs, walks);
         }
 
         public LocalDateTime departureDateTime() {
@@ -652,6 +667,10 @@ public class RoutingEngine {
             Stop boardingStop = nextStops.getFirst();
             if (!sameStopComplex(alightingStop, boardingStop)) {
                 return Duration.ZERO;
+            }
+            if (transferIndex < measuredTransferWalks.size()
+                    && measuredTransferWalks.get(transferIndex) != null) {
+                return measuredTransferWalks.get(transferIndex);
             }
             return estimateWalkingTransferTime(alightingStop, boardingStop);
         }

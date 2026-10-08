@@ -75,6 +75,22 @@ public class AppConfig {
     }
 
     /**
+     * Zwraca klucz OpenRouteService (config.properties lub zmienna ORS_API_KEY); pusty, gdy nie ustawiono.
+     */
+    public static String getOrsApiKey() {
+        String key = getProperty("ors.api.key");
+        if (key == null || key.isBlank()) {
+            key = System.getenv("ORS_API_KEY");
+        }
+        return key == null ? "" : key.trim();
+    }
+
+    public static String getOrsEndpoint() {
+        return getProperty("ors.api.endpoint",
+                "https://api.openrouteservice.org/v2/directions/foot-walking");
+    }
+
+    /**
      * Zwraca endpoint API ZTM.
      */
     public static String getApiEndpoint() {
