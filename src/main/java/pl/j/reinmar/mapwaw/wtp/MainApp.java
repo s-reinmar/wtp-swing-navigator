@@ -1,5 +1,6 @@
 package pl.j.reinmar.mapwaw.wtp;
 
+import com.formdev.flatlaf.FlatLightLaf;
 import pl.j.reinmar.mapwaw.wtp.repository.RealtimeVehicleCache;
 import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
 import pl.j.reinmar.mapwaw.wtp.service.DelayCalculatorService;
@@ -18,10 +19,21 @@ public class MainApp {
         // Uruchomienie aplikacji w wątku zdarzeń Swing (EDT)
         SwingUtilities.invokeLater(() -> {
             try {
-                // Ustawienie natywnego wyglądu systemowego okien
-                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                UIManager.setLookAndFeel(new FlatLightLaf());
+                UIManager.put("Component.arc", 12);
+                UIManager.put("Button.arc", 10);
+                UIManager.put("TextComponent.arc", 8);
+                UIManager.put("ScrollBar.width", 12);
+                UIManager.put("Table.showHorizontalLines", true);
+                UIManager.put("Table.showVerticalLines", false);
             } catch (Exception e) {
-                System.err.println("Nie udało się ustawić systemowego Look and Feel: " + e.getMessage());
+                System.err.println("Nie udało się ustawić FlatLaf: " + e.getMessage());
+                try {
+                    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                } catch (Exception fallbackException) {
+                    System.err.println("Nie udało się ustawić systemowego Look and Feel: "
+                            + fallbackException.getMessage());
+                }
             }
 
             MainFrame frame = new MainFrame();
