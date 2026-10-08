@@ -8,9 +8,11 @@ import pl.j.reinmar.mapwaw.wtp.service.RoutingEngine;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -84,6 +86,46 @@ class RouteResultsPanelTest {
         });
     }
 
+    @Test
+    @DisplayName("Wybór wariantu przekazuje trasę do mapy, a odznaczenie ją czyści")
+    void connectsSelectedRouteToMapPanel() throws Exception {
+        RoutingEngine.ScheduledRoute route = scheduledRoute(
+                0, 8, 0, 8, 25, "17", "Centrum", "A", "B");
+        MapPanel[] mapPanelRef = new MapPanel[1];
+        SwingUtilities.invokeAndWait(() -> {
+            mapPanelRef[0] = new MapPanel();
+            mapPanelRef[0].setSize(800, 600);
+            mapPanelRef[0].doLayout();
+            mapPanelRef[0].getMapViewer().setSize(800, 600);
+        });
+        MapPanel mapPanel = mapPanelRef[0];
+        AtomicBoolean additionalOverlayPainted = new AtomicBoolean();
+        SwingUtilities.invokeAndWait(() -> {
+            mapPanel.setAdditionalOverlayPainter((graphics, map, width, height) ->
+                    additionalOverlayPainted.set(true));
+            panel.connectMapPanel(mapPanel);
+            panel.setRoutes(List.of(route));
+        });
+        SwingUtilities.invokeAndWait(() -> {
+            JList<?> routeList = findComponents(panel, JList.class).getFirst();
+            routeList.setSelectedIndex(0);
+            assertSame(route, mapPanel.getHighlightedRoute());
+            BufferedImage image = new BufferedImage(800, 600, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D graphics = image.createGraphics();
+            try {
+                mapPanel.getMapViewer().getOverlayPainter().paint(
+                        graphics, mapPanel.getMapViewer(), image.getWidth(), image.getHeight());
+            } finally {
+                graphics.dispose();
+            }
+            assertTrue(containsRouteColor(image));
+            assertTrue(additionalOverlayPainted.get());
+
+            routeList.clearSelection();
+            assertNull(mapPanel.getHighlightedRoute());
+        });
+    }
+
     private static RoutingEngine.ScheduledRoute scheduledRoute(int transfers,
                                                                 int departureHour,
                                                                 int departureMinute,
@@ -109,7 +151,21 @@ class RouteResultsPanelTest {
     }
 
     private static Stop stop(String id) {
-        return new Stop(id, "Stop " + id, "01", 52.0, 21.0, true);
+        int offset = Math.floorMod(id.hashCode(), 100);
+        return new Stop(id, "Stop " + id, "01",
+                52.0 + offset * 0.001, 21.0 + offset * 0.001, true);
+    }
+
+    private static boolean containsRouteColor(BufferedImage image) {
+        for (int y = 0; y < image.getHeight(); y++) {
+            for (int x = 0; x < image.getWidth(); x++) {
+                Color color = new Color(image.getRGB(x, y), true);
+                if (color.getRed() > 180 && color.getGreen() < 100 && color.getBlue() < 100) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static <T> Component renderItem(JList<T> list, int index) {

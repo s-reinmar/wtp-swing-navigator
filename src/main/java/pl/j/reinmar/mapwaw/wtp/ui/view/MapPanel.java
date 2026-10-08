@@ -3,6 +3,7 @@ package pl.j.reinmar.mapwaw.wtp.ui.view;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.OSMTileFactoryInfo;
 import org.jxmapviewer.input.PanMouseInputListener;
+import org.jxmapviewer.painter.Painter;
 import org.jxmapviewer.viewer.DefaultTileFactory;
 import org.jxmapviewer.viewer.DefaultWaypoint;
 import org.jxmapviewer.viewer.GeoPosition;
@@ -12,7 +13,9 @@ import org.jxmapviewer.viewer.WaypointPainter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pl.j.reinmar.mapwaw.wtp.model.LiveVehiclePosition;
+import pl.j.reinmar.mapwaw.wtp.model.Stop;
 import pl.j.reinmar.mapwaw.wtp.repository.RealtimeVehicleCache;
+import pl.j.reinmar.mapwaw.wtp.service.RoutingEngine;
 
 import javax.swing.*;
 import javax.swing.event.MouseInputListener;
@@ -22,11 +25,13 @@ import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
+import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -49,7 +54,10 @@ public class MapPanel extends JPanel {
 
     private final JXMapViewer mapViewer;
     private final WaypointPainter<Waypoint> waypointPainter;
+    private final RouteOverlayPainter routeOverlayPainter = new RouteOverlayPainter();
     private final Set<Waypoint> waypoints = new HashSet<>();
+    private Painter<JXMapViewer> baseOverlayPainter;
+    private Painter<? super JXMapViewer> additionalOverlayPainter;
 
     private RealtimeVehicleCache vehicleCache;
     private Consumer<Waypoint> onStopSelectedListener;
@@ -82,7 +90,8 @@ public class MapPanel extends JPanel {
         this.waypointPainter = new WaypointPainter<>();
         this.waypointPainter.setRenderer(new StopWaypointRenderer());
         this.waypointPainter.setWaypoints(this.waypoints);
-        this.mapViewer.setOverlayPainter(this.waypointPainter);
+        this.baseOverlayPainter = this.waypointPainter;
+        this.mapViewer.setOverlayPainter(this::paintOverlays);
 
         add(mapViewer, BorderLayout.CENTER);
     }
@@ -104,6 +113,186 @@ public class MapPanel extends JPanel {
 
     public void setVehicleCache(RealtimeVehicleCache vehicleCache) {
         this.vehicleCache = vehicleCache;
+    }
+
+    public void setAdditionalOverlayPainter(Painter<? super JXMapViewer> painter) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> setAdditionalOverlayPainter(painter));
+            return;
+        }
+        additionalOverlayPainter = painter;
+        mapViewer.repaint();
+    }
+
+    /**
+     * Sets the route to highlight without replacing waypoint or vehicle overlays.
+     */
+    public void highlightRoute(RoutingEngine.ScheduledRoute route) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> highlightRoute(route));
+            return;
+        }
+        routeOverlayPainter.setRoute(route);
+        if (route != null) {
+            showRoute(route);
+        }
+        mapViewer.repaint();
+    }
+
+    public void clearHighlightedRoute() {
+        highlightRoute(null);
+    }
+
+    public RoutingEngine.ScheduledRoute getHighlightedRoute() {
+        return routeOverlayPainter.route;
+    }
+
+    private void paintOverlays(Graphics2D graphics, JXMapViewer map, int width, int height) {
+        if (baseOverlayPainter != null) {
+            baseOverlayPainter.paint(graphics, map, width, height);
+        }
+        if (additionalOverlayPainter != null) {
+            additionalOverlayPainter.paint(graphics, map, width, height);
+        }
+        routeOverlayPainter.paint(graphics, map, width, height);
+    }
+
+    private void showRoute(RoutingEngine.ScheduledRoute route) {
+        List<Stop> stops = route.legs().stream()
+                .flatMap(leg -> leg.route().stops().stream())
+                .filter(this::hasValidCoordinates)
+                .toList();
+        if (stops.isEmpty()) {
+            return;
+        }
+
+        double minLatitude = stops.stream().mapToDouble(Stop::getLatitude).min().orElseThrow();
+        double maxLatitude = stops.stream().mapToDouble(Stop::getLatitude).max().orElseThrow();
+        double minLongitude = stops.stream().mapToDouble(Stop::getLongitude).min().orElseThrow();
+        double maxLongitude = stops.stream().mapToDouble(Stop::getLongitude).max().orElseThrow();
+        mapViewer.setAddressLocation(new GeoPosition(
+                (minLatitude + maxLatitude) / 2, (minLongitude + maxLongitude) / 2));
+
+        int zoom = mapViewer.getZoom();
+        while (zoom < 15 && !routeFitsAtZoom(stops, zoom)) {
+            zoom++;
+        }
+        mapViewer.setZoom(zoom);
+    }
+
+    private boolean routeFitsAtZoom(List<Stop> stops, int zoom) {
+        double minX = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY;
+        double minY = Double.POSITIVE_INFINITY;
+        double maxY = Double.NEGATIVE_INFINITY;
+        for (Stop stop : stops) {
+            Point2D point = mapViewer.getTileFactory().geoToPixel(
+                    new GeoPosition(stop.getLatitude(), stop.getLongitude()), zoom);
+            minX = Math.min(minX, point.getX());
+            maxX = Math.max(maxX, point.getX());
+            minY = Math.min(minY, point.getY());
+            maxY = Math.max(maxY, point.getY());
+        }
+        return maxX - minX <= mapViewer.getWidth() * 0.75
+                && maxY - minY <= mapViewer.getHeight() * 0.75;
+    }
+
+    private boolean hasValidCoordinates(Stop stop) {
+        return stop != null && Double.isFinite(stop.getLatitude())
+                && stop.getLatitude() >= -90 && stop.getLatitude() <= 90
+                && Double.isFinite(stop.getLongitude())
+                && stop.getLongitude() >= -180 && stop.getLongitude() <= 180;
+    }
+
+    private final class RouteOverlayPainter implements Painter<JXMapViewer> {
+        private static final Color ROUTE_COLOR = new Color(220, 45, 45);
+        private static final Color ENDPOINT_COLOR = new Color(24, 130, 65);
+        private static final Color TRANSFER_COLOR = new Color(235, 145, 20);
+        private static final int ENDPOINT_RADIUS = 8;
+        private RoutingEngine.ScheduledRoute route;
+
+        private void setRoute(RoutingEngine.ScheduledRoute route) {
+            this.route = route;
+        }
+
+        @Override
+        public void paint(Graphics2D graphics, JXMapViewer map,
+                          int width, int height) {
+            if (route == null) {
+                return;
+            }
+            Graphics2D g = (Graphics2D) graphics.create();
+            try {
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                g.setStroke(new BasicStroke(5, BasicStroke.CAP_ROUND,
+                        BasicStroke.JOIN_ROUND));
+                Path2D path = new Path2D.Double();
+                boolean hasPoint = false;
+                Stop start = null;
+                Stop end = null;
+                for (RoutingEngine.ScheduledLeg leg : route.legs()) {
+                    List<Stop> stops = leg.route().stops();
+                    for (int i = 0; i < stops.size(); i++) {
+                        Stop stop = stops.get(i);
+                        if (!MapPanel.this.hasValidCoordinates(stop)) {
+                            continue;
+                        }
+                        Point2D point = toViewportPoint(stop, map);
+                        if (!hasPoint) {
+                            path.moveTo(point.getX(), point.getY());
+                            start = stop;
+                            hasPoint = true;
+                        } else if (i > 0 || !sameStop(end, stop)) {
+                            path.lineTo(point.getX(), point.getY());
+                        }
+                        end = stop;
+                    }
+                }
+                if (hasPoint) {
+                    g.setColor(ROUTE_COLOR);
+                    g.draw(path);
+                    paintStopMarker(g, start, map, ENDPOINT_COLOR);
+                    if (!sameStop(start, end)) {
+                        paintStopMarker(g, end, map, ENDPOINT_COLOR);
+                    }
+                    for (int i = 0; i < route.legs().size() - 1; i++) {
+                        List<Stop> stops = route.legs().get(i).route().stops();
+                        if (!stops.isEmpty()) {
+                            paintStopMarker(g, stops.getLast(), map, TRANSFER_COLOR);
+                        }
+                    }
+                }
+            } finally {
+                g.dispose();
+            }
+        }
+
+        private Point2D toViewportPoint(Stop stop, JXMapViewer map) {
+            Point2D point = map.getTileFactory().geoToPixel(
+                    new GeoPosition(stop.getLatitude(), stop.getLongitude()), map.getZoom());
+            Rectangle viewport = map.getViewportBounds();
+            return new Point2D.Double(point.getX() - viewport.x, point.getY() - viewport.y);
+        }
+
+        private void paintStopMarker(Graphics2D g, Stop stop, JXMapViewer map, Color color) {
+            if (!MapPanel.this.hasValidCoordinates(stop)) {
+                return;
+            }
+            Point2D point = toViewportPoint(stop, map);
+            int diameter = ENDPOINT_RADIUS * 2;
+            g.setColor(Color.WHITE);
+            g.fillOval((int) point.getX() - ENDPOINT_RADIUS - 2,
+                    (int) point.getY() - ENDPOINT_RADIUS - 2, diameter + 4, diameter + 4);
+            g.setColor(color);
+            g.fillOval((int) point.getX() - ENDPOINT_RADIUS,
+                    (int) point.getY() - ENDPOINT_RADIUS, diameter, diameter);
+        }
+
+        private boolean sameStop(Stop first, Stop second) {
+            return first != null && second != null
+                    && first.getId() != null && first.getId().equals(second.getId());
+        }
     }
 
     private void setupMouseNavigation() {

@@ -5,10 +5,10 @@ import pl.j.reinmar.mapwaw.wtp.service.RoutingEngine;
 import javax.swing.*;
 import java.awt.*;
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -26,6 +26,7 @@ public class RouteResultsPanel extends JPanel {
     private final JPanel contentPanel = new JPanel(cardLayout);
     private final JLabel emptyMessage = new JLabel(
             "Wyszukaj trasę, aby zobaczyć proponowane warianty.", SwingConstants.CENTER);
+    private Consumer<RoutingEngine.ScheduledRoute> onRouteSelected;
 
     public RouteResultsPanel() {
         setLayout(new BorderLayout(8, 8));
@@ -35,6 +36,11 @@ public class RouteResultsPanel extends JPanel {
 
         routeList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         routeList.setCellRenderer(new RouteCellRenderer());
+        routeList.addListSelectionListener(event -> {
+            if (!event.getValueIsAdjusting() && onRouteSelected != null) {
+                onRouteSelected.accept(routeList.getSelectedValue());
+            }
+        });
         routeList.getAccessibleContext().setAccessibleName("Proponowane warianty tras");
         routeList.getAccessibleContext().setAccessibleDescription(
                 "Lista tras z godziną wyjazdu i przyjazdu, czasem podróży, liczbą przystanków oraz przesiadek.");
@@ -50,10 +56,12 @@ public class RouteResultsPanel extends JPanel {
 
     public void setRoutes(List<RoutingEngine.ScheduledRoute> routes) {
         Objects.requireNonNull(routes, "routes");
+        routeList.clearSelection();
         listModel.clear();
         routes.forEach(route -> listModel.addElement(
                 Objects.requireNonNull(route, "route")));
         if (listModel.isEmpty()) {
+            notifyRouteCleared();
             showEmptyState();
             emptyMessage.setText("Nie znaleziono pasujących tras.");
         } else {
@@ -63,6 +71,32 @@ public class RouteResultsPanel extends JPanel {
 
     public List<RoutingEngine.ScheduledRoute> getRoutes() {
         return java.util.Collections.list(listModel.elements());
+    }
+
+    public void setOnRouteSelected(Consumer<RoutingEngine.ScheduledRoute> onRouteSelected) {
+        this.onRouteSelected = onRouteSelected;
+    }
+
+    public void connectMapPanel(MapPanel mapPanel) {
+        Objects.requireNonNull(mapPanel, "mapPanel");
+        setOnRouteSelected(route -> {
+            if (route == null) {
+                mapPanel.clearHighlightedRoute();
+            } else {
+                mapPanel.highlightRoute(route);
+            }
+        });
+    }
+
+    public void clearSelection() {
+        routeList.clearSelection();
+        notifyRouteCleared();
+    }
+
+    private void notifyRouteCleared() {
+        if (onRouteSelected != null) {
+            onRouteSelected.accept(null);
+        }
     }
 
     private void showEmptyState() {
