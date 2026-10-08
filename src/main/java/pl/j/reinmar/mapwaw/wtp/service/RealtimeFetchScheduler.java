@@ -108,6 +108,15 @@ public class RealtimeFetchScheduler {
     }
 
     /**
+     * Zleca natychmiastowe, dodatkowe pobranie danych na wątku tła (np. po naciśnięciu F5).
+     */
+    public synchronized void refreshNow() {
+        if (scheduler != null && !scheduler.isShutdown()) {
+            scheduler.execute(this::fetchAndProcessRealtimeData);
+        }
+    }
+
+    /**
      * Zatrzymuje pętlę odpytywania API w tle i zwalnia zasoby wątku.
      */
     public synchronized void stop() {

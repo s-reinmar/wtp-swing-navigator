@@ -7,9 +7,12 @@ import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
 import pl.j.reinmar.mapwaw.wtp.service.DelayCalculatorService;
 import pl.j.reinmar.mapwaw.wtp.service.RealtimeFetchScheduler;
 import pl.j.reinmar.mapwaw.wtp.service.WtpRealtimeApiClient;
+import pl.j.reinmar.mapwaw.wtp.ui.component.StopSearchTextField;
 import pl.j.reinmar.mapwaw.wtp.ui.view.MainFrame;
 
 import javax.swing.*;
+import java.awt.BorderLayout;
+import java.awt.Dimension;
 
 public class MainApp {
 
@@ -49,6 +52,15 @@ public class MainApp {
                     new RealtimeVehicleCache(),
                     new DelayCalculatorService(scheduleRepository));
             realtimeScheduler.setConnectionStatusCallback(frame::setGpsApiConnected);
+
+            StopSearchTextField searchField = new StopSearchTextField(scheduleRepository);
+            JPanel sidebar = new JPanel(new BorderLayout(0, 8));
+            sidebar.setPreferredSize(new Dimension(340, 0));
+            sidebar.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+            sidebar.add(searchField, BorderLayout.NORTH);
+            frame.setSidebarPanel(sidebar);
+            frame.setQuickSearchComponent(searchField);
+            frame.setOnRefreshRequested(realtimeScheduler::refreshNow);
 
             frame.setVisible(true);
             realtimeScheduler.start();

@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
 
 /**
  * Główne okno aplikacji Swing/AWT reprezentujące widok nawigacyjny WTP Warszawa.
@@ -24,6 +26,8 @@ public class MainFrame extends JFrame {
     private JPanel statusBarPanel;
     private JLabel statusLabel;
     private JLabel gpsApiStatusLabel;
+    private JComponent quickSearchComponent;
+    private Runnable onRefreshRequested;
 
     /**
      * Konstruktor tworzący główne okno aplikacji z ukierunkowanym układem BorderLayout.
@@ -32,6 +36,63 @@ public class MainFrame extends JFrame {
         super(APP_TITLE);
         initFrame();
         setupBorderLayoutContainers();
+        setupKeyboardShortcuts();
+    }
+
+    /**
+     * Rejestruje skróty globalne okna: Ctrl+F (szybkie wyszukiwanie) i F5 (ręczne odświeżenie).
+     */
+    private void setupKeyboardShortcuts() {
+        JRootPane root = getRootPane();
+        InputMap inputMap = root.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        ActionMap actionMap = root.getActionMap();
+
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_F,
+                Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()), "quickSearch");
+        actionMap.put("quickSearch", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                focusQuickSearch();
+            }
+        });
+
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0), "refreshData");
+        actionMap.put("refreshData", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                requestRefresh();
+            }
+        });
+    }
+
+    private void focusQuickSearch() {
+        if (quickSearchComponent != null) {
+            quickSearchComponent.requestFocusInWindow();
+            if (quickSearchComponent instanceof javax.swing.text.JTextComponent textComponent) {
+                textComponent.selectAll();
+            }
+        }
+    }
+
+    private void requestRefresh() {
+        if (onRefreshRequested != null) {
+            setStatusText("Odświeżanie danych (F5)...");
+            onRefreshRequested.run();
+        }
+    }
+
+    /**
+     * Ustawia komponent, który otrzymuje fokus po naciśnięciu Ctrl+F.
+     */
+    public void setQuickSearchComponent(JComponent component) {
+        this.quickSearchComponent = component;
+    }
+
+    /**
+     * Ustawia akcję wykonywaną po naciśnięciu F5.
+     */
+    public void setOnRefreshRequested(Runnable onRefreshRequested) {
+        this.onRefreshRequested = onRefreshRequested;
     }
 
     /**
