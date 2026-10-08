@@ -26,6 +26,8 @@ import javax.swing.*;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.nio.file.Path;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -105,6 +107,9 @@ public class MainApp {
 
         StopSearchTextField searchField = new StopSearchTextField(repository);
         RoutePlannerPanel routePlanner = new RoutePlannerPanel(repository);
+        // Domyślna godzina wyjazdu = aktualny czas systemowy w formacie HH:mm
+        String currentTime = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
+        SwingUtilities.invokeLater(() -> routePlanner.setDepartureTime(currentTime));
         RouteResultsPanel routeResults = new RouteResultsPanel();
         routeResults.connectMapPanel(mapPanel);
 

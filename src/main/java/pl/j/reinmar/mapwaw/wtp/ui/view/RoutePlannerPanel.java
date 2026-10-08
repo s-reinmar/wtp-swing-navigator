@@ -184,6 +184,13 @@ public class RoutePlannerPanel extends JPanel {
         return spinner;
     }
 
+    /** Ustawia godzinę wyjazdu w formacie "HH:mm"; wywoływać w wątku EDT. */
+    public void setDepartureTime(String time) {
+        LocalTime parsed = LocalTime.parse(time, java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+        departureTimeSpinner.setValue(Date.from(LocalDate.now().atTime(parsed)
+                .atZone(ZoneId.systemDefault()).toInstant()));
+    }
+
     public void setOnRouteRequested(Consumer<RouteRequest> onRouteRequested) {
         this.onRouteRequested = onRouteRequested;
     }
