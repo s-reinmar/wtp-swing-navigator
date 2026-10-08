@@ -1,5 +1,12 @@
 package pl.j.reinmar.mapwaw.wtp;
 
+import pl.j.reinmar.mapwaw.wtp.repository.RealtimeVehicleCache;
+import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
+import pl.j.reinmar.mapwaw.wtp.service.DelayCalculatorService;
+import pl.j.reinmar.mapwaw.wtp.service.RealtimeFetchScheduler;
+import pl.j.reinmar.mapwaw.wtp.service.WtpRealtimeApiClient;
+import pl.j.reinmar.mapwaw.wtp.ui.view.MainFrame;
+
 import javax.swing.*;
 
 public class MainApp {
@@ -17,18 +24,23 @@ public class MainApp {
                 System.err.println("Nie udało się ustawić systemowego Look and Feel: " + e.getMessage());
             }
 
-            // Inicjalizacja głównego okna aplikacji
-            JFrame frame = new JFrame("WTP Warszawa - Nawigacja i Mapa");
-            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            frame.setSize(1280, 800);
-            frame.setLocationRelativeTo(null);
+            MainFrame frame = new MainFrame();
+            frame.setMapPanel(createPlaceholderPanel());
 
-            // Tymczasowy panel główny (w kolejnych fazach zastąpiony przez MapPanel i SidebarPanel)
-            JPanel placeholderPanel = new JPanel();
-            placeholderPanel.add(new JLabel("Aplikacja WTP Swing Navigator - Start w toku..."));
-            frame.add(placeholderPanel);
+            RealtimeFetchScheduler realtimeScheduler = new RealtimeFetchScheduler(
+                    new WtpRealtimeApiClient(),
+                    new RealtimeVehicleCache(),
+                    new DelayCalculatorService(new ScheduleRepository()));
+            realtimeScheduler.setConnectionStatusCallback(frame::setGpsApiConnected);
 
             frame.setVisible(true);
+            realtimeScheduler.start();
         });
+    }
+
+    private static JPanel createPlaceholderPanel() {
+        JPanel placeholderPanel = new JPanel();
+        placeholderPanel.add(new JLabel("Aplikacja WTP Swing Navigator - Start w toku..."));
+        return placeholderPanel;
     }
 }

@@ -34,9 +34,9 @@ public class RealtimeFetchScheduler {
     private ScheduledExecutorService scheduler;
     private ScheduledFuture<?> scheduledTask;
 
-    private Runnable uiRefreshCallback;
-    private Consumer<Boolean> connectionStatusCallback; // Powiadomienie paska stanu (true = OK, false = Brak połączenia)
-    private boolean lastConnectionState = true;
+    private volatile Runnable uiRefreshCallback;
+    private volatile Consumer<Boolean> connectionStatusCallback;
+    private volatile Boolean lastConnectionState;
 
     /**
      * Konstruktor usługi harmonogramu odświeżania pozycji GPS na żywo.
@@ -65,8 +65,12 @@ public class RealtimeFetchScheduler {
     /**
      * Rejestruje nasłuchiwanie zmiany stanu połączenia z siecią API ZTM.
      */
-    public void setConnectionStatusCallback(Consumer<Boolean> connectionStatusCallback) {
+    public synchronized void setConnectionStatusCallback(Consumer<Boolean> connectionStatusCallback) {
         this.connectionStatusCallback = connectionStatusCallback;
+        Boolean connectionState = lastConnectionState;
+        if (connectionStatusCallback != null && connectionState != null) {
+            SwingUtilities.invokeLater(() -> connectionStatusCallback.accept(connectionState));
+        }
     }
 
     /**
@@ -198,11 +202,12 @@ public class RealtimeFetchScheduler {
     /**
      * Powiadamia warstwę UI o zmianie stanu połączenia z serwerem API.
      */
-    private void notifyConnectionState(boolean isConnected) {
-        if (this.lastConnectionState != isConnected) {
+    private synchronized void notifyConnectionState(boolean isConnected) {
+        if (lastConnectionState == null || lastConnectionState != isConnected) {
             this.lastConnectionState = isConnected;
-            if (connectionStatusCallback != null) {
-                SwingUtilities.invokeLater(() -> connectionStatusCallback.accept(isConnected));
+            Consumer<Boolean> callback = connectionStatusCallback;
+            if (callback != null) {
+                SwingUtilities.invokeLater(() -> callback.accept(isConnected));
             }
         }
     }

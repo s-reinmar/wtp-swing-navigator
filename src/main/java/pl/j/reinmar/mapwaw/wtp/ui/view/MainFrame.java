@@ -23,6 +23,7 @@ public class MainFrame extends JFrame {
     private JPanel mapPanel;
     private JPanel statusBarPanel;
     private JLabel statusLabel;
+    private JLabel gpsApiStatusLabel;
 
     /**
      * Konstruktor tworzący główne okno aplikacji z ukierunkowanym układem BorderLayout.
@@ -84,6 +85,16 @@ public class MainFrame extends JFrame {
         statusBarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
         statusBarPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY));
 
+        gpsApiStatusLabel = new JLabel("API GPS: brak połączenia",
+                new ConnectionStatusIcon(false), SwingConstants.LEFT);
+        gpsApiStatusLabel.setIconTextGap(6);
+        gpsApiStatusLabel.setForeground(new Color(160, 35, 35));
+        gpsApiStatusLabel.setToolTipText("Brak potwierdzonego połączenia z API GPS.");
+        gpsApiStatusLabel.getAccessibleContext().setAccessibleName("Status połączenia z API GPS");
+        gpsApiStatusLabel.getAccessibleContext().setAccessibleDescription(
+                "Brak potwierdzonego połączenia z API GPS.");
+        statusBarPanel.add(gpsApiStatusLabel);
+
         statusLabel = new JLabel("Gotowy. Załadowano system interfejsu WTP Swing Navigator.");
         statusLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
         statusBarPanel.add(statusLabel);
@@ -137,6 +148,59 @@ public class MainFrame extends JFrame {
     public void setStatusText(String text) {
         if (statusLabel != null) {
             SwingUtilities.invokeLater(() -> statusLabel.setText(text));
+        }
+    }
+
+    public void setGpsApiConnected(boolean connected) {
+        Runnable update = () -> {
+            String status = connected ? "API GPS: połączono" : "API GPS: brak połączenia";
+            gpsApiStatusLabel.setText(status);
+            gpsApiStatusLabel.setIcon(new ConnectionStatusIcon(connected));
+            gpsApiStatusLabel.setForeground(connected
+                    ? new Color(0, 120, 45) : new Color(160, 35, 35));
+            gpsApiStatusLabel.setToolTipText(connected
+                    ? "Ostatnie pobranie danych z API GPS zakończyło się powodzeniem."
+                    : "Nie udało się pobrać danych z API GPS.");
+            gpsApiStatusLabel.getAccessibleContext().setAccessibleDescription(status);
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            update.run();
+        } else {
+            SwingUtilities.invokeLater(update);
+        }
+    }
+
+    private static final class ConnectionStatusIcon implements Icon {
+        private static final int SIZE = 12;
+        private final Color color;
+
+        private ConnectionStatusIcon(boolean connected) {
+            color = connected ? new Color(30, 175, 75) : new Color(210, 45, 45);
+        }
+
+        @Override
+        public void paintIcon(Component component, Graphics graphics, int x, int y) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            try {
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                g.setColor(color);
+                g.fillOval(x + 1, y + 1, SIZE - 2, SIZE - 2);
+                g.setColor(color.darker());
+                g.drawOval(x + 1, y + 1, SIZE - 2, SIZE - 2);
+            } finally {
+                g.dispose();
+            }
+        }
+
+        @Override
+        public int getIconWidth() {
+            return SIZE;
+        }
+
+        @Override
+        public int getIconHeight() {
+            return SIZE;
         }
     }
 
