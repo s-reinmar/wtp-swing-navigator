@@ -7,6 +7,7 @@ import pl.j.reinmar.mapwaw.wtp.model.RouteVariant;
 import pl.j.reinmar.mapwaw.wtp.model.Stop;
 import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -435,6 +436,7 @@ public class RoutingEngine {
     private static List<ScheduledRoute> sortedByArrival(List<ScheduledRoute> routes) {
         return routes.stream()
                 .sorted(Comparator.comparing(ScheduledRoute::arrivalDateTime)
+                .thenComparing(ScheduledRoute::totalTransferWaitingTime)
                 .thenComparing(ScheduledRoute::departureDateTime)
                 .thenComparingInt(ScheduledRoute::transfers))
                 .distinct()
@@ -533,6 +535,16 @@ public class RoutingEngine {
 
         public LocalDateTime arrivalDateTime() {
             return legs.getLast().arrivalDateTime();
+        }
+
+        /** Zwraca łączny czas oczekiwania między kolejnymi odcinkami trasy. */
+        public Duration totalTransferWaitingTime() {
+            Duration waitingTime = Duration.ZERO;
+            for (int i = 1; i < legs.size(); i++) {
+                waitingTime = waitingTime.plus(Duration.between(
+                        legs.get(i - 1).arrivalDateTime(), legs.get(i).departureDateTime()));
+            }
+            return waitingTime;
         }
     }
 

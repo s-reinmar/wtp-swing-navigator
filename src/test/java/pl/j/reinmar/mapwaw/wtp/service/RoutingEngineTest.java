@@ -11,6 +11,7 @@ import pl.j.reinmar.mapwaw.wtp.model.Stop;
 import pl.j.reinmar.mapwaw.wtp.model.TransportType;
 import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
@@ -70,6 +71,48 @@ class RoutingEngineTest {
         assertEquals(LocalDateTime.of(2026, 10, 5, 9, 5),
                 route.legs().getLast().departureDateTime());
         assertEquals(LocalDateTime.of(2026, 10, 5, 9, 15), route.arrivalDateTime());
+        assertEquals(Duration.ofMinutes(10), route.totalTransferWaitingTime());
+    }
+
+    @Test
+    @DisplayName("Sortuje połączenia według czasu przyjazdu wynikającego z oczekiwania na przesiadkę")
+    void sortsTransferRoutesByTimetableWaitingTime() {
+        Stop origin = stop("A");
+        Stop firstInterchange = stop("B");
+        Stop secondInterchange = stop("X");
+        Stop destination = stop("C");
+        RoutingEngine engine = new RoutingEngine(List.of(
+                variantWithTravelTime("first-slower", "17", "Dworzec", 0,
+                        origin, 600, firstInterchange),
+                variantWithTravelTime("second-slower", "9", "Centrum", 0,
+                        firstInterchange, 600, destination),
+                variantWithTravelTime("first-faster", "18", "Pętla", 0,
+                        origin, 300, secondInterchange),
+                variantWithTravelTime("second-faster", "10", "Centrum", 0,
+                        secondInterchange, 600, destination)
+        ));
+        ScheduleRepository schedule = new ScheduleRepository();
+        addDeparture(schedule, "first-slower", "17", origin,
+                LocalTime.of(8, 45), DayType.WEEKDAY);
+        addDeparture(schedule, "second-slower", "9", firstInterchange,
+                LocalTime.of(9, 5), DayType.WEEKDAY);
+        addDeparture(schedule, "first-faster", "18", origin,
+                LocalTime.of(8, 50), DayType.WEEKDAY);
+        addDeparture(schedule, "second-faster", "10", secondInterchange,
+                LocalTime.of(9, 0), DayType.WEEKDAY);
+
+        List<RoutingEngine.ScheduledRoute> routes = engine.findRoutesWithOneTransfer(
+                origin, destination, LocalDateTime.of(2026, 10, 5, 8, 30), schedule);
+
+        assertEquals(2, routes.size());
+        assertEquals("18", routes.getFirst().legs().getFirst().route().lineNumber());
+        assertEquals(Duration.ofMinutes(5), routes.getFirst().totalTransferWaitingTime());
+        assertEquals(LocalDateTime.of(2026, 10, 5, 9, 10),
+                routes.getFirst().arrivalDateTime());
+        assertEquals("17", routes.getLast().legs().getFirst().route().lineNumber());
+        assertEquals(Duration.ofMinutes(10), routes.getLast().totalTransferWaitingTime());
+        assertEquals(LocalDateTime.of(2026, 10, 5, 9, 15),
+                routes.getLast().arrivalDateTime());
     }
 
     @Test
