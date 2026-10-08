@@ -6,6 +6,7 @@ import pl.j.reinmar.mapwaw.wtp.model.RouteStop;
 import pl.j.reinmar.mapwaw.wtp.model.RouteVariant;
 import pl.j.reinmar.mapwaw.wtp.model.Stop;
 import pl.j.reinmar.mapwaw.wtp.repository.ScheduleRepository;
+import pl.j.reinmar.mapwaw.wtp.util.GeoUtils;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.PriorityQueue;
@@ -24,6 +26,10 @@ import java.util.PriorityQueue;
  * i liczbę przejechanych odcinków między przystankami.
  */
 public class RoutingEngine {
+
+    // Współczynnik przybliżający pieszą trasę do odległości w linii prostej.
+    private static final double WALKING_DISTANCE_FACTOR = 1.3;
+    private static final double WALKING_SPEED_METERS_PER_SECOND = 1.2;
 
     private final List<RouteVariant> routeVariants = new ArrayList<>();
 
@@ -155,28 +161,30 @@ public class RoutingEngine {
                         if (sameService(first.variant(), second.variant())) {
                             continue;
                         }
-                        int secondTransferIndex = indexOfStop(second.stops(), interchange.getId(), 0);
-                        if (secondTransferIndex < 0
-                                || secondTransferIndex >= second.stops().size() - 1) {
-                            continue;
-                        }
-                        int destinationIndex = indexOfStop(
-                                second.stops(), destination.getId(), secondTransferIndex + 1);
-                        if (destinationIndex < 0) {
-                            continue;
-                        }
+                        for (int secondTransferIndex = 0;
+                             secondTransferIndex < second.stops().size() - 1;
+                             secondTransferIndex++) {
+                            Stop boardingStop = second.stops().get(secondTransferIndex);
+                            if (!sameStopComplex(interchange, boardingStop)) {
+                                continue;
+                            }
+                            int destinationIndex = indexOfStop(
+                                    second.stops(), destination.getId(), secondTransferIndex + 1);
+                            if (destinationIndex < 0) {
+                                continue;
+                            }
 
-                        List<Stop> firstLegStops = List.copyOf(
-                                first.stops().subList(originIndex, transferIndex + 1));
-                        List<Stop> secondLegStops = new ArrayList<>(
-                                second.stops().subList(secondTransferIndex, destinationIndex + 1));
-                        secondLegStops.set(0, interchange);
-                        routes.add(new RouteResult(1, List.of(
-                                new RouteLeg(first.variant().getLineNumber(),
-                                        first.variant().getDirectionName(), firstLegStops),
-                                new RouteLeg(second.variant().getLineNumber(),
-                                        second.variant().getDirectionName(), secondLegStops)
-                        )));
+                            List<Stop> firstLegStops = List.copyOf(
+                                    first.stops().subList(originIndex, transferIndex + 1));
+                            List<Stop> secondLegStops = List.copyOf(
+                                    second.stops().subList(secondTransferIndex, destinationIndex + 1));
+                            routes.add(new RouteResult(1, List.of(
+                                    new RouteLeg(first.variant().getLineNumber(),
+                                            first.variant().getDirectionName(), firstLegStops),
+                                    new RouteLeg(second.variant().getLineNumber(),
+                                            second.variant().getDirectionName(), secondLegStops)
+                            )));
+                        }
                     }
                 }
             }
@@ -232,38 +240,48 @@ public class RoutingEngine {
                         if (sameService(first.variant(), second.variant())) {
                             continue;
                         }
-                        int secondTransferIndex = indexOfStop(second.stops(), interchange.getId(), 0);
-                        if (secondTransferIndex < 0
-                                || secondTransferIndex >= second.stops().size() - 1) {
-                            continue;
-                        }
-                        int destinationIndex = indexOfStop(
-                                second.stops(), destination.getId(), secondTransferIndex + 1);
-                        if (destinationIndex < 0) {
-                            continue;
-                        }
+                        for (int secondTransferIndex = 0;
+                             secondTransferIndex < second.stops().size() - 1;
+                             secondTransferIndex++) {
+                            Stop boardingStop = second.stops().get(secondTransferIndex);
+                            if (!sameStopComplex(interchange, boardingStop)) {
+                                continue;
+                            }
+                            if (!interchange.getId().equals(boardingStop.getId())
+                                    && (!hasValidCoordinates(interchange)
+                                    || !hasValidCoordinates(boardingStop))) {
+                                continue;
+                            }
+                            int destinationIndex = indexOfStop(
+                                    second.stops(), destination.getId(), secondTransferIndex + 1);
+                            if (destinationIndex < 0) {
+                                continue;
+                            }
 
-                        LocalDateTime secondDeparture = findNextDeparture(schedule,
-                                second.variant(), interchange.getId(), interchangeArrival);
-                        if (secondDeparture == null) {
-                            continue;
+                            Duration walkingTime = estimateWalkingTransferTime(
+                                    interchange, boardingStop);
+                            LocalDateTime earliestDeparture = interchangeArrival.plus(walkingTime);
+                            LocalDateTime secondDeparture = findNextDeparture(schedule,
+                                    second.variant(), boardingStop.getId(), earliestDeparture);
+                            if (secondDeparture == null) {
+                                continue;
+                            }
+                            LocalDateTime arrival = secondDeparture.plusSeconds(
+                                    travelTimeBetween(second.variant(), boardingStop.getId(),
+                                            destination.getId()));
+                            List<Stop> firstLegStops = List.copyOf(
+                                    first.stops().subList(originIndex, transferIndex + 1));
+                            List<Stop> secondLegStops = List.copyOf(
+                                    second.stops().subList(secondTransferIndex, destinationIndex + 1));
+                            routes.add(new ScheduledRoute(1, List.of(
+                                    new ScheduledLeg(new RouteLeg(first.variant().getLineNumber(),
+                                            first.variant().getDirectionName(), firstLegStops),
+                                            firstDeparture, interchangeArrival),
+                                    new ScheduledLeg(new RouteLeg(second.variant().getLineNumber(),
+                                            second.variant().getDirectionName(), secondLegStops),
+                                            secondDeparture, arrival)
+                            )));
                         }
-                        LocalDateTime arrival = secondDeparture.plusSeconds(
-                                travelTimeBetween(second.variant(), interchange.getId(),
-                                        destination.getId()));
-                        List<Stop> firstLegStops = List.copyOf(
-                                first.stops().subList(originIndex, transferIndex + 1));
-                        List<Stop> secondLegStops = new ArrayList<>(
-                                second.stops().subList(secondTransferIndex, destinationIndex + 1));
-                        secondLegStops.set(0, interchange);
-                        routes.add(new ScheduledRoute(1, List.of(
-                                new ScheduledLeg(new RouteLeg(first.variant().getLineNumber(),
-                                        first.variant().getDirectionName(), firstLegStops),
-                                        firstDeparture, interchangeArrival),
-                                new ScheduledLeg(new RouteLeg(second.variant().getLineNumber(),
-                                        second.variant().getDirectionName(), secondLegStops),
-                                        secondDeparture, arrival)
-                        )));
                     }
                 }
             }
@@ -433,6 +451,39 @@ public class RoutingEngine {
                 .orElse(0);
     }
 
+    private static boolean sameStopComplex(Stop first, Stop second) {
+        if (!hasStopId(first) || !hasStopId(second)) {
+            return false;
+        }
+        if (first.getId().equals(second.getId())) {
+            return true;
+        }
+        return first.getName() != null && !first.getName().isBlank()
+                && second.getName() != null && !second.getName().isBlank()
+                && first.getName().trim().toLowerCase(Locale.ROOT)
+                .equals(second.getName().trim().toLowerCase(Locale.ROOT));
+    }
+
+    private static Duration estimateWalkingTransferTime(Stop from, Stop to) {
+        if (from.getId().equals(to.getId())) {
+            return Duration.ZERO;
+        }
+        if (!hasValidCoordinates(from) || !hasValidCoordinates(to)) {
+            throw new IllegalArgumentException("Przystanki muszą mieć poprawne współrzędne.");
+        }
+        double straightLineDistance = GeoUtils.calculateDistanceMeters(
+                from.getLatitude(), from.getLongitude(), to.getLatitude(), to.getLongitude());
+        long walkingSeconds = (long) Math.ceil(straightLineDistance
+                * WALKING_DISTANCE_FACTOR / WALKING_SPEED_METERS_PER_SECOND);
+        return Duration.ofSeconds(walkingSeconds);
+    }
+
+    private static boolean hasValidCoordinates(Stop stop) {
+        return Double.isFinite(stop.getLatitude()) && stop.getLatitude() >= -90
+                && stop.getLatitude() <= 90 && Double.isFinite(stop.getLongitude())
+                && stop.getLongitude() >= -180 && stop.getLongitude() <= 180;
+    }
+
     private static List<ScheduledRoute> sortedByArrival(List<ScheduledRoute> routes) {
         return routes.stream()
                 .sorted(Comparator.comparing(ScheduledRoute::arrivalDateTime)
@@ -545,6 +596,22 @@ public class RoutingEngine {
                         legs.get(i - 1).arrivalDateTime(), legs.get(i).departureDateTime()));
             }
             return waitingTime;
+        }
+
+        /** Zwraca łączny szacowany czas dojścia pieszego między słupkami przesiadkowymi. */
+        public Duration totalWalkingTransferTime() {
+            Duration walkingTime = Duration.ZERO;
+            for (int i = 1; i < legs.size(); i++) {
+                List<Stop> previousStops = legs.get(i - 1).route().stops();
+                List<Stop> nextStops = legs.get(i).route().stops();
+                Stop alightingStop = previousStops.getLast();
+                Stop boardingStop = nextStops.getFirst();
+                if (sameStopComplex(alightingStop, boardingStop)) {
+                    walkingTime = walkingTime.plus(
+                            estimateWalkingTransferTime(alightingStop, boardingStop));
+                }
+            }
+            return walkingTime;
         }
     }
 

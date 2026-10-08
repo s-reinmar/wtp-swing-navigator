@@ -75,6 +75,57 @@ class RoutingEngineTest {
     }
 
     @Test
+    @DisplayName("Dolicza szacowany czas przejścia między słupkami tego samego zespołu")
+    void includesWalkingTimeBetweenStopsInSameComplex() {
+        Stop origin = stop("A");
+        Stop alightingStop = new Stop("B1", "Centrum", "01", 52.0, 21.0, true);
+        Stop boardingStop = new Stop("B2", "Centrum", "02", 52.0, 21.001, true);
+        Stop destination = stop("C");
+        RoutingEngine engine = new RoutingEngine(List.of(
+                variantWithTravelTime("first", "17", "Dworzec", 0,
+                        origin, 600, alightingStop),
+                variantWithTravelTime("second", "9", "Centrum", 0,
+                        boardingStop, 600, destination)
+        ));
+        ScheduleRepository schedule = new ScheduleRepository();
+        addDeparture(schedule, "first", "17", origin, LocalTime.of(8, 45), DayType.WEEKDAY);
+        addDeparture(schedule, "second", "9", boardingStop, LocalTime.of(8, 56), DayType.WEEKDAY);
+        addDeparture(schedule, "second", "9", boardingStop, LocalTime.of(8, 57), DayType.WEEKDAY);
+
+        List<RoutingEngine.ScheduledRoute> routes = engine.findRoutesWithOneTransfer(
+                origin, destination, LocalDateTime.of(2026, 10, 5, 8, 30), schedule);
+
+        assertEquals(1, routes.size());
+        RoutingEngine.ScheduledRoute route = routes.getFirst();
+        assertEquals(LocalDateTime.of(2026, 10, 5, 8, 57),
+                route.legs().getLast().departureDateTime());
+        assertEquals("B1", route.legs().getFirst().route().stops().getLast().getId());
+        assertEquals(List.of("B2", "C"), stopIds(route.legs().getLast().route().stops()));
+        assertEquals(Duration.ofSeconds(75), route.totalWalkingTransferTime());
+        assertEquals(LocalDateTime.of(2026, 10, 5, 9, 7), route.arrivalDateTime());
+    }
+
+    @Test
+    @DisplayName("Dopuszcza przesiadkę między różnymi słupkami tego samego zespołu")
+    void findsOneTransferBetweenDifferentStopsInSameComplex() {
+        Stop origin = stop("A");
+        Stop alightingStop = new Stop("B1", "Centrum", "01", 52.0, 21.0, true);
+        Stop boardingStop = new Stop("B2", "Centrum", "02", 52.0, 21.001, true);
+        Stop destination = stop("C");
+        RoutingEngine engine = new RoutingEngine(List.of(
+                variant("first", "17", "Dworzec", origin, alightingStop),
+                variant("second", "9", "Centrum", boardingStop, destination)
+        ));
+
+        List<RoutingEngine.RouteResult> routes =
+                engine.findRoutesWithOneTransfer(origin, destination);
+
+        assertEquals(1, routes.size());
+        assertEquals("B1", routes.getFirst().legs().getFirst().stops().getLast().getId());
+        assertEquals("B2", routes.getFirst().legs().getLast().stops().getFirst().getId());
+    }
+
+    @Test
     @DisplayName("Sortuje połączenia według czasu przyjazdu wynikającego z oczekiwania na przesiadkę")
     void sortsTransferRoutesByTimetableWaitingTime() {
         Stop origin = stop("A");
