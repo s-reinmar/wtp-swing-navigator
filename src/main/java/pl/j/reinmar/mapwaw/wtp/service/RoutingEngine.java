@@ -634,16 +634,26 @@ public class RoutingEngine {
         public Duration totalWalkingTransferTime() {
             Duration walkingTime = Duration.ZERO;
             for (int i = 1; i < legs.size(); i++) {
-                List<Stop> previousStops = legs.get(i - 1).route().stops();
-                List<Stop> nextStops = legs.get(i).route().stops();
-                Stop alightingStop = previousStops.getLast();
-                Stop boardingStop = nextStops.getFirst();
-                if (sameStopComplex(alightingStop, boardingStop)) {
-                    walkingTime = walkingTime.plus(
-                            estimateWalkingTransferTime(alightingStop, boardingStop));
-                }
+                walkingTime = walkingTime.plus(transferWalkingTime(i - 1));
             }
             return walkingTime;
+        }
+
+        /**
+         * Zwraca szacowany czas dojścia między kolejnymi odcinkami dla indeksu przesiadki.
+         */
+        public Duration transferWalkingTime(int transferIndex) {
+            if (transferIndex < 0 || transferIndex >= legs.size() - 1) {
+                throw new IndexOutOfBoundsException("Nieprawidłowy indeks przesiadki: " + transferIndex);
+            }
+            List<Stop> previousStops = legs.get(transferIndex).route().stops();
+            List<Stop> nextStops = legs.get(transferIndex + 1).route().stops();
+            Stop alightingStop = previousStops.getLast();
+            Stop boardingStop = nextStops.getFirst();
+            if (!sameStopComplex(alightingStop, boardingStop)) {
+                return Duration.ZERO;
+            }
+            return estimateWalkingTransferTime(alightingStop, boardingStop);
         }
     }
 

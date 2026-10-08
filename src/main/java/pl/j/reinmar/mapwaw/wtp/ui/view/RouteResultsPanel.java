@@ -24,6 +24,7 @@ public class RouteResultsPanel extends JPanel {
     private final JList<RoutingEngine.ScheduledRoute> routeList = new JList<>(listModel);
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel contentPanel = new JPanel(cardLayout);
+    private final RouteItineraryPanel itineraryPanel = new RouteItineraryPanel();
     private final JLabel emptyMessage = new JLabel(
             "Wyszukaj trasę, aby zobaczyć proponowane warianty.", SwingConstants.CENTER);
     private Consumer<RoutingEngine.ScheduledRoute> onRouteSelected;
@@ -37,8 +38,12 @@ public class RouteResultsPanel extends JPanel {
         routeList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         routeList.setCellRenderer(new RouteCellRenderer());
         routeList.addListSelectionListener(event -> {
-            if (!event.getValueIsAdjusting() && onRouteSelected != null) {
-                onRouteSelected.accept(routeList.getSelectedValue());
+            if (!event.getValueIsAdjusting()) {
+                RoutingEngine.ScheduledRoute route = routeList.getSelectedValue();
+                itineraryPanel.setRoute(route);
+                if (onRouteSelected != null) {
+                    onRouteSelected.accept(route);
+                }
             }
         });
         routeList.getAccessibleContext().setAccessibleName("Proponowane warianty tras");
@@ -49,7 +54,13 @@ public class RouteResultsPanel extends JPanel {
         emptyMessage.setForeground(Color.GRAY);
         emptyMessage.setFont(emptyMessage.getFont().deriveFont(Font.ITALIC));
         contentPanel.add(emptyMessage, "EMPTY");
-        contentPanel.add(new JScrollPane(routeList), "RESULTS");
+        JScrollPane routeScrollPane = new JScrollPane(routeList);
+        routeScrollPane.setPreferredSize(new Dimension(300, 180));
+        JSplitPane resultsAndItinerary = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
+                routeScrollPane, itineraryPanel);
+        resultsAndItinerary.setResizeWeight(0.4);
+        resultsAndItinerary.setContinuousLayout(true);
+        contentPanel.add(resultsAndItinerary, "RESULTS");
         add(contentPanel, BorderLayout.CENTER);
         showEmptyState();
     }
@@ -71,6 +82,10 @@ public class RouteResultsPanel extends JPanel {
 
     public List<RoutingEngine.ScheduledRoute> getRoutes() {
         return java.util.Collections.list(listModel.elements());
+    }
+
+    public RouteItineraryPanel getItineraryPanel() {
+        return itineraryPanel;
     }
 
     public void setOnRouteSelected(Consumer<RoutingEngine.ScheduledRoute> onRouteSelected) {

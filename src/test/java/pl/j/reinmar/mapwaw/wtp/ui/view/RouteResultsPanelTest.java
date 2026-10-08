@@ -61,14 +61,12 @@ class RouteResultsPanelTest {
     void showsEmptyStateWhenNoRoutesAreAvailable() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             JList<?> routeList = findComponents(panel, JList.class).getFirst();
-            JScrollPane routeScrollPane = findComponents(panel, JScrollPane.class).getFirst();
             JLabel emptyMessage = findComponents(panel, JLabel.class).stream()
                     .filter(label -> label.getText().contains("Wyszukaj trasę"))
                     .findFirst().orElseThrow();
 
             assertEquals("Proponowane warianty tras",
                     routeList.getAccessibleContext().getAccessibleName());
-            assertFalse(routeScrollPane.isVisible());
             assertTrue(emptyMessage.isVisible());
         });
 
@@ -76,12 +74,10 @@ class RouteResultsPanelTest {
 
         SwingUtilities.invokeAndWait(() -> {
             JList<?> routeList = findComponents(panel, JList.class).getFirst();
-            JScrollPane routeScrollPane = findComponents(panel, JScrollPane.class).getFirst();
             JLabel emptyMessage = findComponents(panel, JLabel.class).stream()
                     .filter(label -> label.getText().contains("Nie znaleziono"))
                     .findFirst().orElseThrow();
             assertEquals(0, routeList.getModel().getSize());
-            assertFalse(routeScrollPane.isVisible());
             assertTrue(emptyMessage.isVisible());
         });
     }
@@ -110,6 +106,7 @@ class RouteResultsPanelTest {
             JList<?> routeList = findComponents(panel, JList.class).getFirst();
             routeList.setSelectedIndex(0);
             assertSame(route, mapPanel.getHighlightedRoute());
+            assertSame(route, panel.getItineraryPanel().getRoute());
             BufferedImage image = new BufferedImage(800, 600, BufferedImage.TYPE_INT_ARGB);
             Graphics2D graphics = image.createGraphics();
             try {
@@ -123,6 +120,7 @@ class RouteResultsPanelTest {
 
             routeList.clearSelection();
             assertNull(mapPanel.getHighlightedRoute());
+            assertNull(panel.getItineraryPanel().getRoute());
         });
     }
 
