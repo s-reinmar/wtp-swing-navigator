@@ -130,6 +130,10 @@ public class ScheduleRepository implements java.io.Serializable {
         return departuresByLineAndStop.getOrDefault(compositeKey, List.of());
     }
 
+    public java.util.Collection<Stop> getAllStops() {
+        return java.util.Collections.unmodifiableCollection(stopsById.values());
+    }
+
     public int getStopsCount() {
         return stopsById.size();
     }
